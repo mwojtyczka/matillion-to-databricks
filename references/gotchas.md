@@ -27,3 +27,11 @@ Matillion `joinExpressions` predicates (e.g. `` `s`.`product_id` = `p`.`product_
 ## Rewrite ≠ append
 
 `rewrite-table-dl` means full overwrite each run. Map to a materialized view (full refresh) or `CREATE OR REPLACE`, never `INSERT INTO` (which appends).
+
+## Variables must migrate with the pipelines
+
+A pipeline that reads a variable breaks if the variable has nowhere to resolve. Migrate variable declarations **before** the steps that read them. Map by scope/behavior, not name: project/env variables → bundle variables; scalar job variables → Job parameters; grid variables → `for_each` input or a UC lookup table; and **write-back** variables (`updateScalarVariables` in a step's `postProcessing`) → **task values**, not parameters (Databricks parameters are immutable within a run). Full detail: `references/variables.md`.
+
+## Nested orchestrations (`run-orchestration`)
+
+An orchestration pipeline can call another orchestration pipeline (`run-orchestration`, the shared-job pattern) — distinct from `run-transformation`. It maps to a `run_job_task` (nested Databricks Job), not a pipeline task. Deeply nested chains may hit Databricks' nested-job depth limits; inline (flatten) when the child isn't genuinely reused across parents. See `references/orchestration/run-orchestration.md`.

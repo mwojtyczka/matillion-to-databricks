@@ -1,14 +1,18 @@
 ---
 name: matillion-to-databricks
-description: Guide for migrating Matillion ETL pipelines to Databricks. Trigger when the user wants to migrate Matillion orchestration (*.orch.yaml) or transformation (*.tran.yaml) jobs to Databricks. Orchestrations become Databricks Jobs; transformations become Lakeflow Declarative Pipelines. Consult the relevant component reference before translating each component.
+description: Guide for migrating Matillion ETL pipelines to Databricks. Trigger when the user wants to migrate Matillion orchestration (*.orch.yaml) and transformation (*.tran.yaml) pipelines to Databricks. Matillion orchestration pipelines become Databricks Jobs; Matillion transformation pipelines become Lakeflow Declarative Pipelines. Consult the relevant component reference before translating each component.
 ---
 
 # Matillion → Databricks Migration Guide
 
-An end-to-end workflow for migrating Matillion ETL pipelines to Databricks. Matillion projects are made of two file types:
+An end-to-end workflow for migrating Matillion ETL pipelines to Databricks.
 
-- `*.orch.yaml` — **orchestration**: a control-flow DAG of steps connected by `transitions`. Becomes a **Databricks Job**.
-- `*.tran.yaml` — **transformation**: a dataflow DAG of components connected by `sources`. Becomes a **Lakeflow Declarative Pipeline**.
+**Terminology (keep the sides unambiguous):** the source artifacts are **Matillion pipelines** — matching the Data Productivity Cloud format (note the top-level `pipeline:` key in each file). The Databricks targets are **Databricks Jobs** and **Lakeflow pipelines**. Always qualify which side you mean: "Matillion orchestration pipeline" → "Databricks Job"; "Matillion transformation pipeline" → "Lakeflow pipeline".
+
+Matillion projects are made of two pipeline file types:
+
+- `*.orch.yaml` — **orchestration pipeline**: a control-flow DAG of steps connected by `transitions`. Becomes a **Databricks Job**.
+- `*.tran.yaml` — **transformation pipeline**: a dataflow DAG of components connected by `sources`. Becomes a **Lakeflow Declarative Pipeline**.
 
 Consult the component reference (below) **before** translating each component, not after something breaks.
 
@@ -22,10 +26,11 @@ Find every pipeline file and map the call graph:
 find . -name '*.orch.yaml' -o -name '*.tran.yaml'
 ```
 
-- Orchestrations are the entry points.
-- For each orchestration, note every `run-transformation` step and which `.tran.yaml` it names (`transformationJob:`). This tells you which transformation feeds which Job task.
+- Orchestration pipelines are the entry points.
+- For each orchestration pipeline, note every `run-transformation` step (which `.tran.yaml` it names via `transformationJob:`) and every `run-orchestration` step (which `.orch.yaml` it names via `orchestrationJob:`). This tells you which pipeline feeds which Job task and which orchestrations are nested inside others.
+- Note every variable the pipelines declare, pass (`setScalarVariables`/`setGridVariables`), or read (`${...}`) — variables migrate alongside the pipelines. See `references/variables.md`.
 
-Write down: the list of orchestrations, the transformations each one calls, and any transformation not called by any orchestration (a standalone pipeline).
+Write down: the list of orchestration pipelines, what each one calls (transformations and nested orchestrations), the variables in play, and any transformation not called by anything (a standalone pipeline).
 
 ## Step 2 — Parse the orchestration graph
 
@@ -38,7 +43,9 @@ See:
 | `start` / `end-success` | `references/orchestration/start-end.md` |
 | `sql-executor` | `references/orchestration/sql-executor.md` |
 | `run-transformation` | `references/orchestration/run-transformation.md` |
+| `run-orchestration` | `references/orchestration/run-orchestration.md` |
 | `python-script` | `references/orchestration/python-script.md` |
+| variables (all scopes) | `references/variables.md` |
 
 ## Step 3 — Parse each transformation graph
 
@@ -64,8 +71,9 @@ Before writing any code, read `references/gotchas.md` — it lists the mistakes 
 ## Step 5 — Assemble the Databricks Asset Bundle
 
 Emit a DAB (`databricks.yml`) with:
-- one **pipeline** resource per `.tran.yaml` (the Lakeflow Declarative Pipeline + its SQL/Python source files),
-- one **job** resource per `.orch.yaml`, whose tasks mirror the orchestration graph (SQL tasks for `sql-executor`, a pipeline task for each `run-transformation`, a notebook task for `python-script`).
+- one **pipeline** resource per transformation pipeline (`.tran.yaml`) — the Lakeflow Declarative Pipeline + its SQL/Python source files,
+- one **job** resource per orchestration pipeline (`.orch.yaml`), whose tasks mirror the orchestration graph: SQL tasks for `sql-executor`, a pipeline task for each `run-transformation`, a `run_job_task` for each `run-orchestration` (nested orchestration), and a notebook task for `python-script`.
+- **bundle variables / job parameters** for the Matillion variables (see `references/variables.md`), so per-environment config and per-run inputs are parameterized rather than hardcoded.
 
 ## Step 6 — Deploy and validate
 
