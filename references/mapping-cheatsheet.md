@@ -1,5 +1,15 @@
 # Matillion → Databricks mapping cheatsheet
 
+## Job vs. Lakeflow pipeline — the core decision
+
+**Ask: is this deciding what-runs-when (→ Job) or declaring how-data-flows (→ Lakeflow pipeline)?**
+
+- **Databricks Job** = control flow: ordering, conditions, branching, loops, retries, schedules, side effects. The only place control flow can live.
+- **Lakeflow pipeline** = declarative dataflow: table→table transforms with auto dependency/incremental/quality/lineage. **No** conditionals, loops, failure-branching, or imperative sequencing.
+- **They compose**: the Job is the outer shell; each transformation pipeline runs inside it as a pipeline task.
+
+Anything that branches (`success`/`failure`, `If`), loops (iterators), nests (`run-orchestration`), or has side effects (DDL, API, `python-script`) **must** be a Job task — Lakeflow can't express it. Full rationale in `SKILL.md` → "When to use a Databricks Job vs. a Lakeflow pipeline".
+
 ## Pipeline types
 
 Source artifacts are **Matillion pipelines**; targets are **Databricks Jobs** / **Lakeflow pipelines**.

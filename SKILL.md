@@ -18,6 +18,46 @@ Consult the component reference (below) **before** translating each component, n
 
 ---
 
+## When to use a Databricks Job vs. a Lakeflow pipeline
+
+This is the central decision of the migration. Get it wrong and you'll either fight Lakeflow trying to express control flow it can't, or lose Lakeflow's data-quality/lineage benefits by hand-coding transforms as Job tasks. The rule follows the same split Matillion already makes:
+
+**Principle: orchestration = control flow → Job. Transformation = dataflow → Lakeflow pipeline.**
+
+- A **Databricks Job (Workflow)** is an *imperative task orchestrator*. It decides **what runs, in what order, and under what conditions** — dependencies, branching, retries, schedules, parameters. It is the only place control flow can live.
+- A **Lakeflow Declarative Pipeline** is a *declarative dataflow engine*. You declare the tables/views and their dependencies; Lakeflow figures out execution order, incremental processing, data quality (expectations), and lineage. It deliberately has **no conditionals, no loops, no failure-branching, no imperative sequencing**.
+
+### The capability boundary (what forces the choice)
+
+If a Matillion step needs any of the following, it **must** be a Job task — Lakeflow cannot express it:
+
+| Matillion construct | Why it can't be a pipeline | Databricks home |
+|---|---|---|
+| Conditional transitions / `If` components | Pipelines have no branching | **Job** — task `depends_on` + `run_if` conditions |
+| `success` / `failure` transitions | Pipelines don't do per-step failure routing | **Job** — `run_if: all_done` / failure-condition tasks |
+| Iterators / loops (grid/loop iterators) | Pipelines don't loop | **Job** — `for_each` task |
+| `run-orchestration` (nested pipelines) | Composition of control flow | **Job** — `run_job_task` |
+| DDL, API calls, file ops, `python-script` side effects | Not dataflow | **Job** — SQL / notebook task |
+| Scheduling, retries, alerts, parameters | Runtime orchestration concerns | **Job** — triggers, task retries, `job.parameters` |
+
+Conversely, use a **Lakeflow pipeline** for the pure table-to-table dataflow — the transformation-pipeline components (`table-input` → `join` → `aggregate` → `rewrite-table-dl`). You gain automatic dependency resolution, incremental refresh, data-quality expectations, and end-to-end lineage that hand-written Job SQL tasks don't give you.
+
+### How they compose
+
+The two are **not** either/or — a real migration uses both, nested. The **Job is the outer shell** (it holds the control flow); each transformation pipeline runs **inside** it as a **pipeline task**:
+
+```
+Databricks Job (from the orchestration pipeline)
+├─ task: seed/DDL            (sql-executor        → SQL task)
+├─ task: run transformation  (run-transformation  → PIPELINE TASK → Lakeflow pipeline)
+├─ task: nested orchestration(run-orchestration   → run_job_task)
+└─ task: post-process        (python-script       → notebook task, run_if success)
+```
+
+So: **default a transformation pipeline to a Lakeflow pipeline; default an orchestration pipeline to a Job; and any step that branches, loops, conditions, or has side effects stays a Job task.** When unsure, ask: *"Is this deciding what-runs-when (Job), or declaring how-data-flows (pipeline)?"*
+
+---
+
 ## Step 1 — Inventory the Matillion project
 
 Find every pipeline file and map the call graph:
