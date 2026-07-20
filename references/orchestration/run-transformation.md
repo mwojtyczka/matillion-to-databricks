@@ -22,7 +22,7 @@ A **pipeline task** in the Job that runs the Lakeflow Declarative Pipeline built
 
 ## Worked example (from create-maia-demo-data.orch.yaml)
 
-`Run Transformation` has `transformationJob: "sales-by-category-region.tran.yaml"` and runs after `Generate Fact Data` (`success`). It becomes a pipeline task depending on the `generate_fact_data` task, pointing at the pipeline built in Tasks 3–6.
+`Run Transformation` has `transformationJob: "sales-by-category-region.tran.yaml"` and runs after `Generate Fact Data` (`success`). It becomes a pipeline task depending on the `generate_fact_data` task, pointing at the Lakeflow pipeline built from `sales-by-category-region.tran.yaml` (see the transformation references).
 
 ## Gotchas
 

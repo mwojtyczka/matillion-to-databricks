@@ -17,9 +17,11 @@ SELECT p.category,
        SUM(s.quantity)   AS total_quantity,
        SUM(s.revenue)    AS total_revenue,
        AVG(s.revenue)    AS avg_revenue,
-       MIN(s.revenue)    AS min_revenue
+       MIN(s.revenue)    AS min_revenue,
+       MAX(s.revenue)    AS max_revenue
 FROM maia_sample_sales s JOIN maia_sample_products p ON s.product_id = p.product_id
 GROUP BY p.category
+ORDER BY total_revenue DESC
 """)
 ```
 

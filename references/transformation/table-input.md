@@ -17,7 +17,7 @@ SELECT sale_id, product_id, region_id, quantity, revenue
 FROM my_catalog.my_schema.maia_sample_sales
 ```
 
-If the source is produced by an upstream pipeline step, reference it as a Lakeflow dataset (e.g. `LIVE.<name>` / a streaming table) instead of a base table.
+If the source is produced by an upstream pipeline step, reference it by plain name — each intermediate transformation component becomes its own `CREATE OR REFRESH MATERIALIZED VIEW <name> AS SELECT ...` (or a CTE) that downstream components reference by name, so bare `FROM sales` or `FROM join_regions` in later components resolves correctly. (`LIVE.<name>` is legacy-compatible DLT syntax; current Lakeflow SQL can use the plain dataset name directly.)
 
 ## Worked example (from sales-by-category-region.tran.yaml)
 
