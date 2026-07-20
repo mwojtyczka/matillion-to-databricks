@@ -1,0 +1,176 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "Joins sales fact to product and region dimensions, then aggregates\
+      \ revenue and quantity by category and region"
+    origin: "maia-019f7f6b-9421-71c5-840c-4f2724717cc7"
+  components:
+    Sales:
+      type: "table-input"
+      parameters:
+        componentName: "Sales"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        targetTable: "maia_sample_sales"
+        offsetType: "None"
+        columnNames:
+        - "sale_id"
+        - "product_id"
+        - "region_id"
+        - "quantity"
+        - "revenue"
+    Products:
+      type: "table-input"
+      parameters:
+        componentName: "Products"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        targetTable: "maia_sample_products"
+        offsetType: "None"
+        columnNames:
+        - "product_id"
+        - "product_name"
+        - "category"
+    Regions:
+      type: "table-input"
+      parameters:
+        componentName: "Regions"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        targetTable: "maia_sample_regions"
+        offsetType: "None"
+        columnNames:
+        - "region_id"
+        - "region_name"
+        - "country"
+    Join Products:
+      type: "join"
+      sources:
+      - "Sales"
+      - "Products"
+      parameters:
+        componentName: "Join Products"
+        mainTable: "Sales"
+        mainTableAlias: "s"
+        joins:
+        - - "Products"
+          - "p"
+          - "Inner"
+        joinExpressions:
+        - - |
+            `s`.`product_id` = `p`.`product_id`
+          - "s_Inner_p"
+        columnMappings:
+        - - "s.sale_id"
+          - "sale_id"
+        - - "s.product_id"
+          - "product_id"
+        - - "s.region_id"
+          - "region_id"
+        - - "s.quantity"
+          - "quantity"
+        - - "s.revenue"
+          - "revenue"
+        - - "p.product_name"
+          - "product_name"
+        - - "p.category"
+          - "category"
+    Join Regions:
+      type: "join"
+      sources:
+      - "Join Products"
+      - "Regions"
+      parameters:
+        componentName: "Join Regions"
+        mainTable: "Join Products"
+        mainTableAlias: "sp"
+        joins:
+        - - "Regions"
+          - "r"
+          - "Inner"
+        joinExpressions:
+        - - |
+            `sp`.`region_id` = `r`.`region_id`
+          - "sp_Inner_r"
+        columnMappings:
+        - - "sp.sale_id"
+          - "sale_id"
+        - - "sp.product_id"
+          - "product_id"
+        - - "sp.quantity"
+          - "quantity"
+        - - "sp.revenue"
+          - "revenue"
+        - - "sp.product_name"
+          - "product_name"
+        - - "sp.category"
+          - "category"
+        - - "r.region_id"
+          - "region_id"
+        - - "r.region_name"
+          - "region_name"
+        - - "r.country"
+          - "country"
+    Aggregate:
+      type: "aggregate"
+      sources:
+      - "Join Regions"
+      parameters:
+        componentName: "Aggregate"
+        groupings:
+        - "category"
+        - "region_name"
+        aggregations:
+        - - "revenue"
+          - "Sum"
+        - - "quantity"
+          - "Sum"
+        - - "sale_id"
+          - "Count"
+    Write Output:
+      type: "rewrite-table-dl"
+      sources:
+      - "Aggregate"
+      parameters:
+        componentName: "Write Output"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        table: "maia_sample_sales_summary"
+design:
+  components:
+    Sales:
+      position:
+        x: 0
+        "y": 0
+      tempMetlId:
+    Products:
+      position:
+        x: 0
+        "y": 80
+      tempMetlId:
+    Regions:
+      position:
+        x: 0
+        "y": 160
+      tempMetlId:
+    Join Products:
+      position:
+        x: 200
+        "y": 40
+      tempMetlId:
+    Join Regions:
+      position:
+        x: 400
+        "y": 80
+      tempMetlId:
+    Aggregate:
+      position:
+        x: 600
+        "y": 80
+      tempMetlId:
+    Write Output:
+      position:
+        x: 800
+        "y": 80
+      tempMetlId:
