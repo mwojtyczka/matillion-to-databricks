@@ -249,10 +249,39 @@ the flow is: **upload your Matillion files, start a fresh chat, then prompt.**
    namespace (Matillion `[Environment Default]` has no Databricks equivalent) — give it
    a `catalog.schema` you have write access to.
 
-4. **Deploy & validate.** Once the bundle is generated, ask it to deploy: *"deploy this
-   bundle to my workspace and run the validation checklist."* On Databricks it uses the
-   CLI/bundle tooling; you need a Unity Catalog workspace and permission to create the
-   Job (and pipeline, if one was emitted). See `references/deploy-and-validate.md`.
+4. **Deploy it yourself with the CLI.** Genie *generates* the bundle in your Workspace,
+   but it can't deploy it — deploying runs the Databricks CLI (`databricks bundle
+   deploy`), which the in-workspace assistant does not execute for you. Pull the
+   generated bundle to a machine with the [Databricks CLI](https://docs.databricks.com/en/dev-tools/cli/)
+   and deploy from there:
+
+   ```bash
+   # Download the generated bundle from the Workspace to your machine
+   ME=$(databricks current-user me -o json | jq -r .userName)
+   databricks workspace export-dir \
+     "/Workspace/Users/$ME/matillion-migration/output" ./migrated-bundle
+
+   # Set the target host/warehouse in databricks.yml, then deploy + run
+   cd ./migrated-bundle
+   databricks bundle deploy -t dev
+   databricks bundle run <job_name> -t dev
+   ```
+
+   You need a Unity Catalog workspace and permission to create the Job (and pipeline, if
+   one was emitted). See `references/deploy-and-validate.md`.
+
+   > **No local CLI? (deploy from inside the workspace.)** Bundles are a CLI construct —
+   > `databricks bundle deploy` has no SDK/REST equivalent — so if you can't run the CLI,
+   > the alternative is to create the resources directly with the Databricks SDK from a
+   > **notebook** (a notebook can `import databricks.sdk` and call `w.jobs.create(...)` /
+   > `w.pipelines.create(...)`). Ask Genie to also emit a small `deploy.py` alongside the
+   > bundle, then run it as a notebook. Trade-off: this creates the Job/pipeline directly
+   > and gives up the bundle's state/diffing and target model — prefer the CLI path when
+   > you can, and use this only for locked-down setups.
+
+5. **Validate.** Genie *can* run SQL, so you can ask it in-chat to run the validation
+   checklist (tables exist, row counts sane, an aggregate spot-check) against the
+   deployed tables — or run the queries yourself. See `references/deploy-and-validate.md`.
 
 > **Tip:** if the assistant doesn't seem to be using the skill, confirm it's under
 > `.assistant/skills/matillion-to-databricks/` with `SKILL.md` at the top, and start a
@@ -302,8 +331,10 @@ output to the converted code already in `examples/demo/databricks/`:
 - Matillion **variables** mapped to bundle variables / Job parameters / task values.
 - Matillion **secrets** migrated to **Databricks secret scopes**, referenced at runtime
   (never inlined or turned into variables).
-- Deployment via the Databricks CLI and a **validation checklist** (tables exist,
-  row counts sane, an aggregate spot-check).
+- A **validation checklist** (tables exist, row counts sane, an aggregate spot-check).
+  Deployment itself is a CLI step (`databricks bundle deploy`) you run — in Claude Code
+  the agent runs it for you; in Genie you run it from a machine with the CLI (see the
+  Genie deploy step above).
 
 ---
 
