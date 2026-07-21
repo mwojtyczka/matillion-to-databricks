@@ -22,7 +22,7 @@ variables:
     default: matillion_demo
   warehouse_id:
     description: SQL warehouse ID for the sql-executor (setup) tasks
-    default: "75fd8278393d07eb"
+    default: ""  # set to your SQL warehouse ID, e.g. via `-t dev --var warehouse_id=<id>`
 
 include:
   - resources/*.yml
@@ -32,7 +32,7 @@ targets:
     mode: development
     default: true
     workspace:
-      host: https://e2-demo-west.cloud.databricks.com
+      host: https://your-workspace.cloud.databricks.com
   prod:
     mode: production
     workspace:

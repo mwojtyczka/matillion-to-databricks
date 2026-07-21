@@ -1,2 +1,4 @@
 .DS_Store
 .claude/
+# Databricks bundle build state (caches workspace host + terraform state)
+.databricks/
