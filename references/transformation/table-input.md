@@ -12,9 +12,9 @@ Reads a Unity Catalog table. Key parameters:
 A source reference inside the Lakeflow pipeline. Preserve the explicit column list — do **not** use `SELECT *`.
 
 ```sql
--- table-input "Sales" reading maia_sample_sales
+-- table-input "Sales" reading sample_sales
 SELECT sale_id, product_id, region_id, quantity, revenue
-FROM my_catalog.my_schema.maia_sample_sales
+FROM my_catalog.my_schema.sample_sales
 ```
 
 `table-input` reads a real UC table, so it becomes a `FROM my_catalog.my_schema.<targetTable>` — usually **inlined** into the consuming query (a CTE or the source of a `JOIN`), not its own materialized view. A bare projection over a source table earns nothing by being materialized. Only promote it to its own dataset if it's reused by several downstream datasets or needs its own expectations (see `references/transformation/rewrite-table.md` → "Consolidate the chain"). If the source is instead produced by an upstream pipeline step, reference that step by its plain dataset name. (`LIVE.<name>` is legacy-compatible DLT syntax; current Lakeflow SQL can use the plain dataset name directly.)

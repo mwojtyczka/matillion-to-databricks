@@ -4,7 +4,7 @@ pipeline:
   metadata:
     description: "Joins sales fact to product and region dimensions, then aggregates\
       \ revenue and quantity by category and region"
-    origin: "maia-019f7f6b-9421-71c5-840c-4f2724717cc7"
+    origin: "demo-019f7f6b-9421-71c5-840c-4f2724717cc7"
   components:
     Sales:
       type: "table-input"
@@ -12,7 +12,7 @@ pipeline:
         componentName: "Sales"
         catalog: "[Environment Default]"
         schema: "[Environment Default]"
-        targetTable: "maia_sample_sales"
+        targetTable: "sample_sales"
         offsetType: "None"
         columnNames:
         - "sale_id"
@@ -26,7 +26,7 @@ pipeline:
         componentName: "Products"
         catalog: "[Environment Default]"
         schema: "[Environment Default]"
-        targetTable: "maia_sample_products"
+        targetTable: "sample_products"
         offsetType: "None"
         columnNames:
         - "product_id"
@@ -38,7 +38,7 @@ pipeline:
         componentName: "Regions"
         catalog: "[Environment Default]"
         schema: "[Environment Default]"
-        targetTable: "maia_sample_regions"
+        targetTable: "sample_regions"
         offsetType: "None"
         columnNames:
         - "region_id"
@@ -136,7 +136,7 @@ pipeline:
         componentName: "Write Output"
         catalog: "[Environment Default]"
         schema: "[Environment Default]"
-        table: "maia_sample_sales_summary"
+        table: "sample_sales_summary"
 design:
   components:
     Sales:

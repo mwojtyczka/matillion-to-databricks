@@ -134,7 +134,7 @@ Before writing any code, read `references/gotchas.md` — it lists the mistakes 
 
 ## Step 5 — Assemble the Databricks Asset Bundle
 
-**Ask the user how to name the Job** before emitting the bundle (and each additional Job, if there are nested orchestrations). Don't silently reuse the Matillion pipeline's internal name — propose a clean default derived from the `.orch.yaml` (e.g. `create-maia-demo-data.orch.yaml` → `maia-demo-job`) and let them confirm or override. This sets the job resource key, the `name:`, and how they'll find it in the Workflows UI, so it's worth a quick check rather than a guess.
+**Ask the user how to name the Job** before emitting the bundle (and each additional Job, if there are nested orchestrations). Don't silently reuse the Matillion pipeline's internal name — propose a clean default derived from the `.orch.yaml` (e.g. `matillion-migration-demo.orch.yaml` → `matillion-migration-demo-job`) and let them confirm or override. This sets the job resource key, the `name:`, and how they'll find it in the Workflows UI, so it's worth a quick check rather than a guess.
 
 **Ask the user for the deployment/config values, don't invent them.** Every bundle variable you introduced during the hardcoded-value sweep needs a real value per target. Present the list and ask — don't guess a default and leave it (a bad `warehouse_id`/host silently breaks the first run). At minimum, confirm:
 - **`catalog` / `schema`** — the target UC namespace (resolves `[Environment Default]`).

@@ -48,7 +48,7 @@ A Lakeflow pipeline is a separate resource with its own compute lifecycle and de
 
 Even for streaming, a notebook running Structured Streaming is often simpler for a first migration; choose Lakeflow specifically when you want it to *manage* the streaming state/quality/lineage for you.
 
-## Worked example (from create-maia-demo-data.orch.yaml)
+## Worked example (from matillion-migration-demo.orch.yaml)
 
 `Run Transformation` has `transformationJob: "sales-by-category-region.tran.yaml"` and runs after `Generate Fact Data` (`success`). That transformation is a linear chain producing one full-refresh table with no expectations — so the reference bundle (`examples/demo/databricks/`) implements it as a **SQL task** (`src/setup/03_sales_by_category_region.sql`), not a Lakeflow pipeline. Its `depends_on` is `generate_fact_data`.
 

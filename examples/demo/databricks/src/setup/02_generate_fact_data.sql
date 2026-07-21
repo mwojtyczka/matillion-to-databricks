@@ -1,5 +1,5 @@
 -- Converted from Matillion sql-executor step "Generate Fact Data"
--- Source: matillion/create-maia-demo-data.orch.yaml
+-- Source: matillion/matillion-migration-demo.orch.yaml
 -- Seed/DDL -> a Job SQL task.
 --
 -- catalog/schema arrive as SQL task parameters (:catalog / :schema) and are applied via
@@ -8,7 +8,7 @@
 USE CATALOG IDENTIFIER(:catalog);
 USE SCHEMA IDENTIFIER(:schema);
 
-CREATE OR REPLACE TABLE maia_sample_sales AS
+CREATE OR REPLACE TABLE sample_sales AS
 SELECT
   CAST(sale_id AS INTEGER) AS sale_id,
   CAST(product_id AS STRING) AS product_id,

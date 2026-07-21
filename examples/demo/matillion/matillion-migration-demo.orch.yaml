@@ -20,7 +20,7 @@ pipeline:
         declareSqlVariables: "Include selected"
         variablesToInclude: []
         sqlScript: |-
-          CREATE OR REPLACE TABLE maia_sample_products (
+          CREATE OR REPLACE TABLE sample_products (
             product_id STRING,
             product_name STRING,
             category STRING,
@@ -28,7 +28,7 @@ pipeline:
             stock_quantity INTEGER
           );
 
-          INSERT INTO maia_sample_products VALUES
+          INSERT INTO sample_products VALUES
             ('PROD001', 'Laptop Pro 15', 'Electronics', 1299.99, 45),
             ('PROD002', 'Wireless Mouse', 'Electronics', 29.99, 250),
             ('PROD003', 'USB-C Cable', 'Accessories', 12.99, 500),
@@ -45,7 +45,7 @@ pipeline:
             ('PROD014', 'Screen Protector', 'Accessories', 19.99, 200),
             ('PROD015', 'Laptop Stand Adjustable', 'Furniture', 79.99, 110);
 
-          CREATE OR REPLACE TABLE maia_sample_regions (
+          CREATE OR REPLACE TABLE sample_regions (
             region_id STRING,
             region_name STRING,
             country STRING,
@@ -53,7 +53,7 @@ pipeline:
             timezone_offset INTEGER
           );
 
-          INSERT INTO maia_sample_regions VALUES
+          INSERT INTO sample_regions VALUES
             ('REG001', 'North America East', 'United States', 'John Smith', -5),
             ('REG002', 'North America West', 'United States', 'Sarah Johnson', -8),
             ('REG003', 'Canada Central', 'Canada', 'Michael Brown', -6),
@@ -81,7 +81,7 @@ pipeline:
         declareSqlVariables: "Include selected"
         variablesToInclude:
         sqlScript: |-
-          CREATE OR REPLACE TABLE maia_sample_sales AS
+          CREATE OR REPLACE TABLE sample_sales AS
           SELECT
             CAST(sale_id AS INTEGER) AS sale_id,
             CAST(product_id AS STRING) AS product_id,
@@ -1130,7 +1130,7 @@ pipeline:
 
           # SQL to create an aggregation table: revenue by product category
           sql = """
-          CREATE OR REPLACE TABLE marcin_demo.default.maia_sample_category_summary AS
+          CREATE OR REPLACE TABLE marcin_demo.default.sample_category_summary AS
           SELECT
             p.category,
             COUNT(s.sale_id) AS total_sales,
@@ -1139,8 +1139,8 @@ pipeline:
             AVG(s.revenue) AS avg_revenue,
             MIN(s.revenue) AS min_revenue,
             MAX(s.revenue) AS max_revenue
-          FROM marcin_demo.default.maia_sample_sales s
-          JOIN marcin_demo.default.maia_sample_products p
+          FROM marcin_demo.default.sample_sales s
+          JOIN marcin_demo.default.sample_products p
             ON s.product_id = p.product_id
           GROUP BY p.category
           ORDER BY total_revenue DESC
@@ -1149,7 +1149,7 @@ pipeline:
           # Execute via Matillion context
           cursor = context.cursor()
           cursor.execute(sql)
-          print("Successfully created maia_sample_category_summary table")
+          print("Successfully created sample_category_summary table")
         interpreter: "Python 3"
         timeout: "360"
         user: "Privileged"

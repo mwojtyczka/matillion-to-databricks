@@ -6,7 +6,7 @@ converted Databricks output the skill produces.
 ```
 demo/
 ├─ matillion/     ← BEFORE: the original Matillion pipelines
-│  ├─ create-maia-demo-data.orch.yaml     (orchestration pipeline)
+│  ├─ matillion-migration-demo.orch.yaml     (orchestration pipeline)
 │  └─ sales-by-category-region.tran.yaml  (transformation pipeline)
 └─ databricks/    ← AFTER: the converted Databricks Asset Bundle
    ├─ databricks.yml
@@ -32,7 +32,7 @@ demo/
 
 | Matillion (before) | Databricks (after) | Why |
 |---|---|---|
-| `create-maia-demo-data.orch.yaml` (orchestration) | **Job** `maia_demo_job` (`resources/job.yml`) | Control flow → Job |
+| `matillion-migration-demo.orch.yaml` (orchestration) | **Job** `matillion_migration_demo_job` (`resources/job.yml`) | Control flow → Job |
 | `Start` / `End Success` | *(no task — graph boundaries)* | Boundaries carry no work |
 | `Dimension Tables` (`sql-executor`) | SQL task → `src/setup/01_dimension_tables.sql` | Seed/DDL is setup, not dataflow |
 | `Generate Fact Data` (`sql-executor`) | SQL task → `src/setup/02_generate_fact_data.sql` | Seed/DDL setup |
@@ -82,7 +82,7 @@ the `catalog`/`schema`/`warehouse_id` variables), then:
 ```bash
 cd databricks
 databricks bundle deploy -t dev
-databricks bundle run maia_demo_job -t dev
+databricks bundle run matillion_migration_demo_job -t dev
 ```
 
 > This is illustrative output for learning the mapping. Review and adjust

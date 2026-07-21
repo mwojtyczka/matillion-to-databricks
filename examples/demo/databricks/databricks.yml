@@ -1,7 +1,7 @@
 # Databricks Asset Bundle converted from the Matillion project in ../matillion/
 #
 # Mapping:
-#   create-maia-demo-data.orch.yaml (orchestration pipeline) -> a Databricks Job
+#   matillion-migration-demo.orch.yaml (orchestration pipeline) -> a Databricks Job
 #   sales-by-category-region.tran.yaml (transformation pipeline) -> a Job SQL task
 #     (pure full-refresh SQL, single output, no Lakeflow features -> no pipeline needed)
 #
@@ -9,9 +9,9 @@
 # a notebook task for the python-script aggregation. No Lakeflow pipeline resource.
 #
 # Deploy with:  databricks bundle deploy -t dev
-# Run with:     databricks bundle run maia_demo_job -t dev
+# Run with:     databricks bundle run matillion_migration_demo_job -t dev
 bundle:
-  name: matillion-maia-demo
+  name: matillion-migration-demo
 
 variables:
   catalog:

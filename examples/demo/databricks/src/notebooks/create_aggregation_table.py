@@ -1,6 +1,6 @@
 # Databricks notebook source
 # Converted from the Matillion python-script step "Create Aggregation Table"
-#   Source: matillion/create-maia-demo-data.orch.yaml
+#   Source: matillion/matillion-migration-demo.orch.yaml
 #
 # The original wrapped SQL in Matillion-runtime plumbing (`context.cursor()`,
 # `subprocess`, `import json`) that does not exist in Databricks. Per the skill's
@@ -23,7 +23,7 @@ schema = dbutils.widgets.get("schema")
 # COMMAND ----------
 
 spark.sql(f"""
-CREATE OR REPLACE TABLE {catalog}.{schema}.maia_sample_category_summary AS
+CREATE OR REPLACE TABLE {catalog}.{schema}.sample_category_summary AS
 SELECT
   p.category,
   COUNT(s.sale_id) AS total_sales,
@@ -32,11 +32,11 @@ SELECT
   AVG(s.revenue) AS avg_revenue,
   MIN(s.revenue) AS min_revenue,
   MAX(s.revenue) AS max_revenue
-FROM {catalog}.{schema}.maia_sample_sales s
-JOIN {catalog}.{schema}.maia_sample_products p
+FROM {catalog}.{schema}.sample_sales s
+JOIN {catalog}.{schema}.sample_products p
   ON s.product_id = p.product_id
 GROUP BY p.category
 ORDER BY total_revenue DESC
 """)
 
-print(f"Successfully created {catalog}.{schema}.maia_sample_category_summary table")
+print(f"Successfully created {catalog}.{schema}.sample_category_summary table")

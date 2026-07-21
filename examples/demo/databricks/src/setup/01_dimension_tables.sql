@@ -1,5 +1,5 @@
 -- Converted from Matillion sql-executor step "Dimension Tables"
--- Source: matillion/create-maia-demo-data.orch.yaml
+-- Source: matillion/matillion-migration-demo.orch.yaml
 -- Seed/DDL is control-flow setup, not dataflow -> a Job SQL task (NOT a Lakeflow table).
 --
 -- Matillion [Environment Default] is NOT hardcoded: catalog/schema arrive as SQL task
@@ -9,7 +9,7 @@
 USE CATALOG IDENTIFIER(:catalog);
 USE SCHEMA IDENTIFIER(:schema);
 
-CREATE OR REPLACE TABLE maia_sample_products (
+CREATE OR REPLACE TABLE sample_products (
   product_id STRING,
   product_name STRING,
   category STRING,
@@ -17,7 +17,7 @@ CREATE OR REPLACE TABLE maia_sample_products (
   stock_quantity INTEGER
 );
 
-INSERT INTO maia_sample_products VALUES
+INSERT INTO sample_products VALUES
   ('PROD001', 'Laptop Pro 15', 'Electronics', 1299.99, 45),
   ('PROD002', 'Wireless Mouse', 'Electronics', 29.99, 250),
   ('PROD003', 'USB-C Cable', 'Accessories', 12.99, 500),
@@ -34,7 +34,7 @@ INSERT INTO maia_sample_products VALUES
   ('PROD014', 'Screen Protector', 'Accessories', 19.99, 200),
   ('PROD015', 'Laptop Stand Adjustable', 'Furniture', 79.99, 110);
 
-CREATE OR REPLACE TABLE maia_sample_regions (
+CREATE OR REPLACE TABLE sample_regions (
   region_id STRING,
   region_name STRING,
   country STRING,
@@ -42,7 +42,7 @@ CREATE OR REPLACE TABLE maia_sample_regions (
   timezone_offset INTEGER
 );
 
-INSERT INTO maia_sample_regions VALUES
+INSERT INTO sample_regions VALUES
   ('REG001', 'North America East', 'United States', 'John Smith', -5),
   ('REG002', 'North America West', 'United States', 'Sarah Johnson', -8),
   ('REG003', 'Canada Central', 'Canada', 'Michael Brown', -6),

@@ -11,7 +11,7 @@
 --   join  "Join Products"                       -> CTE join_products
 --   join  "Join Regions"                        -> CTE join_regions
 --   aggregate "Aggregate"                        -> the final GROUP BY
---   rewrite-table-dl "Write Output"              -> maia_sample_sales_summary target
+--   rewrite-table-dl "Write Output"              -> sample_sales_summary target
 --
 -- "Rewrite" = full overwrite each run -> CREATE OR REPLACE TABLE.
 --
@@ -22,7 +22,7 @@
 USE CATALOG IDENTIFIER(:catalog);
 USE SCHEMA IDENTIFIER(:schema);
 
-CREATE OR REPLACE TABLE maia_sample_sales_summary AS
+CREATE OR REPLACE TABLE sample_sales_summary AS
 WITH join_products AS (
   -- join "Join Products": Sales (s) INNER JOIN Products (p)
   SELECT
@@ -33,8 +33,8 @@ WITH join_products AS (
     s.revenue,
     p.product_name,
     p.category
-  FROM maia_sample_sales s
-  INNER JOIN maia_sample_products p
+  FROM sample_sales s
+  INNER JOIN sample_products p
     ON `s`.`product_id` = `p`.`product_id`
 ),
 join_regions AS (
@@ -46,7 +46,7 @@ join_regions AS (
     sp.category,
     r.region_name
   FROM join_products sp
-  INNER JOIN maia_sample_regions r
+  INNER JOIN sample_regions r
     ON `sp`.`region_id` = `r`.`region_id`
 )
 -- aggregate "Aggregate": group by category, region_name

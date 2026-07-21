@@ -10,17 +10,17 @@ A **SQL task** in the Job (or a notebook task). The inline `sqlScript` moves int
 
 ```sql
 -- sql-executor "Dimension Tables" (DDL + seed)
-CREATE OR REPLACE TABLE my_catalog.my_schema.maia_sample_products (
+CREATE OR REPLACE TABLE my_catalog.my_schema.sample_products (
   product_id STRING, product_name STRING, category STRING,
   unit_price DECIMAL(18,2), stock_quantity INTEGER
 );
-INSERT INTO my_catalog.my_schema.maia_sample_products VALUES ('PROD001', 'Laptop Pro 15', 'Electronics', 1299.99, 45), ...;
+INSERT INTO my_catalog.my_schema.sample_products VALUES ('PROD001', 'Laptop Pro 15', 'Electronics', 1299.99, 45), ...;
 ```
 
-## Worked example (from create-maia-demo-data.orch.yaml)
+## Worked example (from matillion-migration-demo.orch.yaml)
 
-- `Dimension Tables`: creates + seeds `maia_sample_products` and `maia_sample_regions`.
-- `Generate Fact Data`: `CREATE OR REPLACE TABLE maia_sample_sales AS SELECT ... FROM VALUES (...)`.
+- `Dimension Tables`: creates + seeds `sample_products` and `sample_regions`.
+- `Generate Fact Data`: `CREATE OR REPLACE TABLE sample_sales AS SELECT ... FROM VALUES (...)`.
 
 Both are **seed/setup** steps, not business transforms — see gotcha below.
 

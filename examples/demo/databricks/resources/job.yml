@@ -1,4 +1,4 @@
-# Databricks Job built from create-maia-demo-data.orch.yaml
+# Databricks Job built from matillion-migration-demo.orch.yaml
 #
 # The orchestration's transitions become task dependencies (depends_on). The
 # `start` and `end-success` components carry no task — they are just graph
@@ -8,8 +8,8 @@
 #         -> Create Aggregation Table -> End Success
 resources:
   jobs:
-    maia_demo_job:
-      name: maia-demo-job
+    matillion_migration_demo_job:
+      name: matillion-migration-demo-job
       parameters:
         - name: catalog
           default: ${var.catalog}

@@ -11,7 +11,7 @@ A **notebook task** (PySpark) in the Job — or, if it only runs SQL, a SQL task
 ```python
 # python-script "Create Aggregation Table" — keep the SQL, drop context.cursor()/subprocess
 spark.sql("""
-CREATE OR REPLACE TABLE my_catalog.my_schema.maia_sample_category_summary AS
+CREATE OR REPLACE TABLE my_catalog.my_schema.sample_category_summary AS
 SELECT p.category,
        COUNT(s.sale_id)  AS total_sales,
        SUM(s.quantity)   AS total_quantity,
@@ -19,15 +19,15 @@ SELECT p.category,
        AVG(s.revenue)    AS avg_revenue,
        MIN(s.revenue)    AS min_revenue,
        MAX(s.revenue)    AS max_revenue
-FROM maia_sample_sales s JOIN maia_sample_products p ON s.product_id = p.product_id
+FROM sample_sales s JOIN sample_products p ON s.product_id = p.product_id
 GROUP BY p.category
 ORDER BY total_revenue DESC
 """)
 ```
 
-## Worked example (from create-maia-demo-data.orch.yaml)
+## Worked example (from matillion-migration-demo.orch.yaml)
 
-`Create Aggregation Table` is a `python-script` that builds `maia_sample_category_summary` by running SQL through `context.cursor()`. In Databricks: a notebook task running `spark.sql(...)` with the same SQL, or a plain SQL task. It runs after `Run Transformation` and before `End Success`.
+`Create Aggregation Table` is a `python-script` that builds `sample_category_summary` by running SQL through `context.cursor()`. In Databricks: a notebook task running `spark.sql(...)` with the same SQL, or a plain SQL task. It runs after `Run Transformation` and before `End Success`.
 
 ## Gotchas
 

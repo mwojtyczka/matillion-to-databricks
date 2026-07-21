@@ -59,12 +59,12 @@ after the user confirms the deploy succeeded.
   ```
 - [ ] Target tables have a sane row count (not zero, not wildly off from source).
   ```sql
-  SELECT COUNT(*) FROM my_catalog.my_schema.maia_sample_sales_summary;
+  SELECT COUNT(*) FROM my_catalog.my_schema.sample_sales_summary;
   ```
 - [ ] Spot-check one aggregate against the source. For the sample, total revenue must match between source and summary:
   ```sql
-  SELECT SUM(revenue) FROM my_catalog.my_schema.maia_sample_sales;          -- source
-  SELECT SUM(revenue) FROM my_catalog.my_schema.maia_sample_sales_summary;  -- must equal
+  SELECT SUM(revenue) FROM my_catalog.my_schema.sample_sales;          -- source
+  SELECT SUM(revenue) FROM my_catalog.my_schema.sample_sales_summary;  -- must equal
   ```
 - [ ] The Job ran green end-to-end (all tasks succeeded in the run history).
 

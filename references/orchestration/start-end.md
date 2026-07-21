@@ -11,7 +11,7 @@ No task of their own. They define the Job's boundaries:
 - `start`'s transition target is the Job's first task (no `depends_on`).
 - `end-success` is implicit — the Job succeeds when all tasks succeed.
 
-## Worked example (from create-maia-demo-data.orch.yaml)
+## Worked example (from matillion-migration-demo.orch.yaml)
 
 `Start` → (`unconditional`) → `Dimension Tables`. So `Dimension Tables` is the root Job task. `End Success` follows `Create Aggregation Table` and needs no task.
 

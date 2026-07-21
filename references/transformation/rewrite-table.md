@@ -20,24 +20,22 @@ Which one you emit is the executor decision in `references/orchestration/run-tra
 
 This is the key transformation decision. The upstream `table-input` / `join` / `aggregate` components are **not** each a separate table/view. A 1:1 mapping is faithful to Matillion but materializes every intermediate as its own object — recomputed on every run (and in Lakeflow, storage-backed). For a linear chain producing one output, that is pure waste.
 
-**Default: collapse the whole chain into the single target statement, using CTEs for the intermediate components.** In a SQL task that's one `CREATE OR REPLACE TABLE ... AS WITH ... SELECT`; in Lakeflow it's one `CREATE OR REFRESH MATERIALIZED VIEW`. Below the example is written for Lakeflow, but the CTE body is identical in a SQL task — only the leading DDL differs.
-
-**Default: collapse a linear chain that yields a single `rewrite-table-dl` output into ONE materialized view, using CTEs for the intermediate components.** Identical result, one object to store and refresh instead of N.
+**Default: collapse the whole chain into the single target statement, using CTEs for the intermediate components.** In a SQL task that's one `CREATE OR REPLACE TABLE ... AS WITH ... SELECT`; in Lakeflow it's one `CREATE OR REFRESH MATERIALIZED VIEW`. Below the example is written for Lakeflow, but the CTE body is identical in a SQL task — only the leading DDL differs. Identical result, one object to store and refresh instead of N.
 
 ```sql
 -- The whole sales-by-category-region.tran.yaml chain as a single target MV.
-CREATE OR REFRESH MATERIALIZED VIEW my_catalog.my_schema.maia_sample_sales_summary AS
+CREATE OR REFRESH MATERIALIZED VIEW my_catalog.my_schema.sample_sales_summary AS
 WITH join_products AS (        -- join "Join Products"
   SELECT s.sale_id, s.product_id, s.region_id, s.quantity, s.revenue,
          p.product_name, p.category
-  FROM my_catalog.my_schema.maia_sample_sales s
-  INNER JOIN my_catalog.my_schema.maia_sample_products p
+  FROM my_catalog.my_schema.sample_sales s
+  INNER JOIN my_catalog.my_schema.sample_products p
     ON `s`.`product_id` = `p`.`product_id`
 ),
 join_regions AS (              -- join "Join Regions"
   SELECT sp.sale_id, sp.quantity, sp.revenue, sp.category, r.region_name
   FROM join_products sp
-  INNER JOIN my_catalog.my_schema.maia_sample_regions r
+  INNER JOIN my_catalog.my_schema.sample_regions r
     ON `sp`.`region_id` = `r`.`region_id`
 )
 SELECT category, region_name,  -- aggregate "Aggregate"
@@ -57,7 +55,7 @@ GROUP BY category, region_name;
 
 ## Worked example (from sales-by-category-region.tran.yaml)
 
-`Write Output` writes the `Aggregate` result to `maia_sample_sales_summary` — the transformation's single output. The chain (`Sales`/`Products`/`Regions` → `Join Products` → `Join Regions` → `Aggregate` → `Write Output`) is linear and yields just this one table, so the reference implementation (`examples/demo/databricks/src/pipelines/sales_by_category_region.sql`) consolidates it into the **single** MV above rather than seven. None of the intermediates are reused or carry expectations, so materializing them separately would only add storage and refresh cost.
+`Write Output` writes the `Aggregate` result to `sample_sales_summary` — the transformation's single output. The chain (`Sales`/`Products`/`Regions` → `Join Products` → `Join Regions` → `Aggregate` → `Write Output`) is linear and yields just this one table, so the reference implementation (`examples/demo/databricks/src/setup/03_sales_by_category_region.sql`) consolidates it into the **single** query above rather than seven. None of the intermediates are reused or carry expectations, so materializing them separately would only add storage and refresh cost.
 
 ## Gotchas
 
