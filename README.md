@@ -2,7 +2,8 @@
 
 A **skill** — a self-contained pack of instructions and reference docs — that guides an
 AI agent (and you) through converting **Matillion** ETL pipelines into **Databricks**
-Jobs and Lakeflow Declarative Pipelines.
+Jobs (with SQL / notebook tasks, and Lakeflow Declarative Pipelines where they're
+actually needed).
 
 It's written as plain Markdown, so it works with any AI coding tool that can read a
 project's files — **Databricks Genie / Assistant**, **Claude Code**, or other
@@ -14,12 +15,13 @@ It turns Matillion's two pipeline file types into their Databricks equivalents:
 
 | Matillion pipeline | Databricks target |
 |---|---|
-| `*.orch.yaml` — orchestration pipeline (control flow) | **Databricks Job** (Workflow) |
-| `*.tran.yaml` — transformation pipeline (dataflow) | **Lakeflow Declarative Pipeline** |
+| `*.orch.yaml` — orchestration pipeline (control flow) | **Databricks Job** (Workflow) — always the shell |
+| `*.tran.yaml` — transformation pipeline (dataflow) | a **task in that Job** — SQL task (default), notebook, or a Lakeflow pipeline only when incremental/streaming or managed data-quality is needed |
 
 The skill carries per-component references (joins, aggregates, SQL executors,
 nested orchestrations, variables, …), a mapping cheatsheet, a decision guide for
-Job-vs-pipeline, and a bank of hard-won gotchas.
+picking each task's executor (SQL task → notebook → Lakeflow), and a bank of
+hard-won gotchas.
 
 ---
 
@@ -37,7 +39,7 @@ references/                  ← per-component + cross-cutting reference docs
                                 run-orchestration, python-script
 examples/demo/               ← a complete before/after worked example
   ├─ matillion/              ← BEFORE: the original Matillion pipelines (.yaml)
-  └─ databricks/             ← AFTER: the converted DAB (Job + Lakeflow pipeline)
+  └─ databricks/             ← AFTER: the converted DAB (a Job with SQL + notebook tasks; no Lakeflow pipeline needed)
 README.md                    ← this file
 ```
 
@@ -69,12 +71,26 @@ a workspace; you only need Databricks access for Step 6 (deploy & validate).
 A skill is just a folder of Markdown (`SKILL.md` + `references/`). "Installing" it
 means putting it somewhere your AI tool will read. Two common setups:
 
-**Databricks Genie / Assistant, or any tool without a skills folder** — drop the
-folder into the **repo/project you're working in** (e.g. alongside your Matillion
-export) so the assistant can read `SKILL.md` and the references as context. No special
-location required; then just ask it to migrate (see below).
+### Databricks Genie / Assistant
 
-**Claude Code** — copy the folder into its skills directory so it loads automatically:
+Databricks' assistant has no dedicated "skills" folder — it reads the files in your
+**Workspace**. So "installing" the skill just means placing its folder in the
+Workspace and pointing the assistant at it:
+
+1. In the Databricks UI, go to **Workspace** and pick (or create) a folder to work in,
+   e.g. `/Workspace/Users/<you>/matillion-migration/`.
+2. Put the **skill** there — upload the whole folder so you have
+   `matillion-migration/skill/SKILL.md` and `matillion-migration/skill/references/…`.
+   (Use **Import** → *File/Folder*, drag-and-drop, or clone it from a Git folder.)
+3. Put your **Matillion project files** in a sibling subfolder — see
+   [How to run a conversion in Genie](#how-to-run-a-conversion-in-genie) below.
+
+The assistant can now read `SKILL.md` and the references as context when you reference
+that path in your prompt. No skills registry required.
+
+### Claude Code
+
+Copy the folder into its skills directory so it loads automatically:
 
 *macOS / Linux*
 ```bash
@@ -104,7 +120,56 @@ should see **matillion-to-databricks** in the list.
 
 ---
 
-## How to start a conversion
+## How to run a conversion in Genie
+
+The assistant works from files in your Workspace, so the flow is: **place the files,
+then prompt.**
+
+1. **Place your Matillion project in the Workspace.** Create a folder for the source
+   pipelines next to the skill (from the install step), and upload every `*.orch.yaml`
+   and `*.tran.yaml` you want to migrate — keep the original folder structure so nested
+   `run-orchestration` / `run-transformation` references still resolve. For example:
+
+   ```
+   /Workspace/Users/<you>/matillion-migration/
+     ├─ skill/                      ← SKILL.md + references/ (this repo)
+     ├─ source/                     ← your Matillion export goes here
+     │    ├─ daily_load.orch.yaml
+     │    └─ transforms/…​.tran.yaml
+     └─ output/                     ← (created by the conversion)
+   ```
+
+2. **Open the assistant** (the Assistant panel in a notebook, or Genie) and give it a
+   prompt that (a) points at the skill, (b) points at your source folder, and (c) says
+   where to write the result. A prompt you can copy and edit:
+
+   > **Use the migration skill in `/Workspace/Users/<you>/matillion-migration/skill/`
+   > (read `SKILL.md` and the `references/` docs, and follow that workflow) to migrate
+   > the Matillion pipelines in `/Workspace/Users/<you>/matillion-migration/source/`
+   > to Databricks. Write the resulting Databricks Asset Bundle (a Job per
+   > orchestration pipeline, with SQL/notebook tasks — and a Lakeflow pipeline only
+   > where one is actually needed) into
+   > `/Workspace/Users/<you>/matillion-migration/output/`. Before writing any code,
+   > follow the skill's decision ladder and gotchas, and ask me for the real Unity
+   > Catalog `catalog.schema` to replace any Matillion `[Environment Default]`
+   > placeholders.**
+
+3. **Answer the placeholder question.** The skill will ask for a real Unity Catalog
+   namespace (Matillion `[Environment Default]` has no Databricks equivalent) — give it
+   `catalog.schema` you have write access to.
+
+4. **Deploy & validate.** Once the bundle is generated, ask it to deploy: *"deploy this
+   bundle to my workspace and run the validation checklist."* On Databricks it uses the
+   CLI/bundle tooling; you need a Unity Catalog workspace and permission to create the
+   Job (and pipeline, if one was emitted). See `references/deploy-and-validate.md`.
+
+> **Tip:** if the assistant doesn't seem to be reading the skill, paste the contents of
+> `SKILL.md` directly into the conversation (or open it in the editor first) so it's in
+> context, then repeat the prompt.
+
+---
+
+## How to start a conversion (Claude Code)
 
 1. Put the Matillion pipeline files you want to migrate somewhere Claude Code can
    read them — easiest is to `cd` into a folder that contains your `*.orch.yaml`
@@ -121,7 +186,7 @@ should see **matillion-to-databricks** in the list.
    or point it at specific files:
 
    > **"Convert `daily_load.orch.yaml` and the transformations it calls into a
-   > Databricks Job and Lakeflow pipelines."**
+   > Databricks Job (SQL/notebook tasks; a Lakeflow pipeline only if one is needed)."**
 
 The skill triggers on Matillion-migration requests and walks the workflow:
 **inventory → parse the orchestration/transformation graphs → map each component →
@@ -138,8 +203,10 @@ output to the converted code already in `examples/demo/databricks/`:
 ## What you get out
 
 - A **Databricks Asset Bundle** (`databricks.yml`) with a **Job** per orchestration
-  pipeline and a **Lakeflow pipeline** per transformation pipeline.
-- The generated **SQL / Python** source for each pipeline (SQL by default; Python
+  pipeline; each transformation becomes a task in that Job — a **SQL task** by default,
+  a **notebook** where imperative logic is involved, or a **Lakeflow pipeline** only
+  when one is actually warranted.
+- The generated **SQL / Python** source for each task (SQL by default; Python
   only where a component needs it).
 - Matillion **variables** mapped to bundle variables / Job parameters / task values.
 - Deployment via the Databricks CLI and a **validation checklist** (tables exist,
@@ -149,10 +216,12 @@ output to the converted code already in `examples/demo/databricks/`:
 
 ## Tips & limitations
 
-- **Read the decision guide.** `SKILL.md` → *"When to use a Databricks Job vs. a
-  Lakeflow pipeline"* explains why control flow (conditions, loops, failure
-  branching, side effects) becomes a Job and pure dataflow becomes a pipeline. This
-  is the call that most affects the result.
+- **Read the decision guide.** `SKILL.md` → *"The two decisions of every migration"*
+  explains the two calls that most affect the result: (1) the orchestration always
+  becomes the **Job** (control flow — conditions, loops, failure branching, side
+  effects — can only live there); (2) each transformation task picks an executor via
+  the ladder **SQL task → notebook → Lakeflow** (Lakeflow only for incremental/
+  streaming or managed data-quality/lineage, not by default).
 - **Placeholders need resolving.** Matillion `[Environment Default]` catalog/schema
   values have no Databricks equivalent — you'll be asked for real Unity Catalog
   names. See `references/gotchas.md`.
