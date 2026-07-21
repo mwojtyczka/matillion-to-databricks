@@ -29,13 +29,14 @@ references/                  ← per-component + cross-cutting reference docs
   ├─ transformation/         ← table-input, join, aggregate, rewrite-table
   └─ orchestration/          ← start-end, sql-executor, run-transformation,
                                 run-orchestration, python-script
-create-maia-demo-data.orch.yaml    ← real sample pipelines (used in the worked examples)
-sales-by-category-region.tran.yaml
+examples/                    ← real sample Matillion pipelines (used in the worked examples)
+  ├─ create-maia-demo-data.orch.yaml
+  └─ sales-by-category-region.tran.yaml
 README.md                    ← this file
 ```
 
 **Required for the skill to work:** `SKILL.md` + the `references/` folder.
-The two `*.yaml` samples are helpful examples (referenced by the docs) — keep them.
+The `examples/` samples are helpful (referenced by the docs) — keep them.
 Anything else you received (`docs/`, `.superpowers/`, `.claude/`, `.git/`) is
 build/scratch and can be deleted.
 
@@ -114,8 +115,9 @@ assemble a Databricks Asset Bundle (`databricks.yml`) → deploy & validate.**
 
 If you don't have your own files yet, try it on the included samples:
 
-> **"Using the matillion-to-databricks skill, convert
-> `create-maia-demo-data.orch.yaml` and `sales-by-category-region.tran.yaml`."**
+> **"Using the matillion-to-databricks skill, convert the pipelines in
+> `examples/` (`create-maia-demo-data.orch.yaml` and
+> `sales-by-category-region.tran.yaml`)."**
 
 ---
 

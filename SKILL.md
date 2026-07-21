@@ -20,7 +20,7 @@ Consult the component reference (below) **before** translating each component, n
 
 ## When to use a Databricks Job vs. a Lakeflow pipeline
 
-This is the central decision of the migration. Get it wrong and you'll either fight Lakeflow trying to express control flow it can't, or lose Lakeflow's data-quality/lineage benefits by hand-coding transforms as Job tasks. The rule follows the same split Matillion already makes:
+This is the central decision of the migration. Get it wrong and you'll either fight Lakeflow trying to express control flow it can't, or lose Lakeflow's lineage and observability benefits by hand-coding transforms as Job tasks. The rule follows the same split Matillion already makes:
 
 **Principle: orchestration = control flow → Job. Transformation = dataflow → Lakeflow pipeline.**
 
