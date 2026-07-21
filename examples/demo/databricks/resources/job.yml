@@ -1,0 +1,50 @@
+# Databricks Job built from create-maia-demo-data.orch.yaml
+#
+# The orchestration's transitions become task dependencies (depends_on). The
+# `start` and `end-success` components carry no task — they are just graph
+# boundaries. Matillion transition graph:
+#
+#   Start -> Dimension Tables -> Generate Fact Data -> Run Transformation
+#         -> Create Aggregation Table -> End Success
+resources:
+  jobs:
+    maia_demo_job:
+      name: maia-demo-job
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+      tasks:
+        # sql-executor "Dimension Tables" -> SQL task (seed/DDL)
+        - task_key: dimension_tables
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/setup/01_dimension_tables.sql
+
+        # sql-executor "Generate Fact Data" -> SQL task, depends on dimension_tables
+        - task_key: generate_fact_data
+          depends_on:
+            - task_key: dimension_tables
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/setup/02_generate_fact_data.sql
+
+        # run-transformation "Run Transformation" -> pipeline task (the Lakeflow pipeline)
+        - task_key: run_transformation
+          depends_on:
+            - task_key: generate_fact_data
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.sales_by_category_region.id}
+
+        # python-script "Create Aggregation Table" -> notebook task
+        - task_key: create_aggregation_table
+          depends_on:
+            - task_key: run_transformation
+          notebook_task:
+            notebook_path: ../src/notebooks/create_aggregation_table.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}

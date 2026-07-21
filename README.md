@@ -1,8 +1,14 @@
 # Matillion → Databricks Migration Skill
 
-A [Claude Code](https://docs.claude.com/en/docs/claude-code) **skill** that guides an
+A **skill** — a self-contained pack of instructions and reference docs — that guides an
 AI agent (and you) through converting **Matillion** ETL pipelines into **Databricks**
 Jobs and Lakeflow Declarative Pipelines.
+
+It's written as plain Markdown, so it works with any AI coding tool that can read a
+project's files — **Databricks Genie / Assistant**, **Claude Code**, or other
+AI assistants. It is **not** specific to any one tool; the install steps below just
+show where the two most common ones expect it. Even without an agent, the files are a
+readable, worked migration guide you can follow by hand.
 
 It turns Matillion's two pipeline file types into their Databricks equivalents:
 
@@ -29,14 +35,16 @@ references/                  ← per-component + cross-cutting reference docs
   ├─ transformation/         ← table-input, join, aggregate, rewrite-table
   └─ orchestration/          ← start-end, sql-executor, run-transformation,
                                 run-orchestration, python-script
-examples/                    ← real sample Matillion pipelines (used in the worked examples)
-  ├─ create-maia-demo-data.orch.yaml
-  └─ sales-by-category-region.tran.yaml
+examples/demo/               ← a complete before/after worked example
+  ├─ matillion/              ← BEFORE: the original Matillion pipelines (.yaml)
+  └─ databricks/             ← AFTER: the converted DAB (Job + Lakeflow pipeline)
 README.md                    ← this file
 ```
 
+See `examples/demo/README.md` for the full before/after mapping.
+
 **Required for the skill to work:** `SKILL.md` + the `references/` folder.
-The `examples/` samples are helpful (referenced by the docs) — keep them.
+The `examples/demo/` before/after walkthrough is helpful (and referenced by the docs) — keep it.
 Anything else you received (`docs/`, `.superpowers/`, `.claude/`, `.git/`) is
 build/scratch and can be deleted.
 
@@ -44,7 +52,9 @@ build/scratch and can be deleted.
 
 ## Prerequisites
 
-- **Claude Code** installed — https://docs.claude.com/en/docs/claude-code/setup
+- An **AI coding assistant that can read your project's files** — e.g. Databricks
+  Genie / Assistant, Claude Code, or similar. (You can also just read the files
+  yourself and follow them by hand.)
 - For the deploy/validate step: the **Databricks CLI** authenticated to your
   workspace. The skill delegates deployment to Databricks' own tooling; you'll need
   access to a Unity Catalog workspace to actually run the migrated pipelines.
@@ -54,18 +64,25 @@ a workspace; you only need Databricks access for Step 6 (deploy & validate).
 
 ---
 
-## Install
+## Install / make it available
 
-A skill is just a folder containing a `SKILL.md`. Put this folder in your personal
-Claude Code skills directory.
+A skill is just a folder of Markdown (`SKILL.md` + `references/`). "Installing" it
+means putting it somewhere your AI tool will read. Two common setups:
 
-**macOS / Linux**
+**Databricks Genie / Assistant, or any tool without a skills folder** — drop the
+folder into the **repo/project you're working in** (e.g. alongside your Matillion
+export) so the assistant can read `SKILL.md` and the references as context. No special
+location required; then just ask it to migrate (see below).
+
+**Claude Code** — copy the folder into its skills directory so it loads automatically:
+
+*macOS / Linux*
 ```bash
 mkdir -p ~/.claude/skills
 cp -R matillion-to-databricks ~/.claude/skills/matillion-to-databricks
 ```
 
-**Windows (PowerShell)**
+*Windows (PowerShell)*
 ```powershell
 New-Item -ItemType Directory -Force "$HOME\.claude\skills"
 Copy-Item -Recurse .\matillion-to-databricks "$HOME\.claude\skills\matillion-to-databricks"
@@ -78,11 +95,8 @@ The final layout should be:
   └─ references/ ...
 ```
 
-Then start (or restart) Claude Code. Confirm it's loaded:
-```
-/skills
-```
-You should see **matillion-to-databricks** in the list.
+Then start (or restart) Claude Code and confirm it's loaded with `/skills` — you
+should see **matillion-to-databricks** in the list.
 
 > **Project-only install (alternative):** to scope the skill to a single repo
 > instead of your whole machine, copy the folder to `.claude/skills/` inside that
@@ -113,11 +127,11 @@ The skill triggers on Matillion-migration requests and walks the workflow:
 **inventory → parse the orchestration/transformation graphs → map each component →
 assemble a Databricks Asset Bundle (`databricks.yml`) → deploy & validate.**
 
-If you don't have your own files yet, try it on the included samples:
+If you don't have your own files yet, try it on the included demo and compare its
+output to the converted code already in `examples/demo/databricks/`:
 
 > **"Using the matillion-to-databricks skill, convert the pipelines in
-> `examples/` (`create-maia-demo-data.orch.yaml` and
-> `sales-by-category-region.tran.yaml`)."**
+> `examples/demo/matillion/`."**
 
 ---
 

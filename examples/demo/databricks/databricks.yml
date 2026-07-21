@@ -1,0 +1,35 @@
+# Databricks Asset Bundle converted from the Matillion project in ../matillion/
+#
+# Mapping:
+#   create-maia-demo-data.orch.yaml (orchestration pipeline) -> a Databricks Job
+#   sales-by-category-region.tran.yaml (transformation pipeline) -> a Lakeflow pipeline
+#
+# Deploy with:  databricks bundle deploy -t dev
+# Run with:     databricks bundle run maia_demo_job -t dev
+bundle:
+  name: matillion-maia-demo
+
+variables:
+  catalog:
+    description: Target Unity Catalog catalog (resolves Matillion [Environment Default])
+    default: main
+  schema:
+    description: Target schema
+    default: matillion_demo
+  warehouse_id:
+    description: SQL warehouse ID for the sql-executor (setup) tasks
+    default: ""
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://your-workspace.cloud.databricks.com
+  prod:
+    mode: production
+    workspace:
+      host: https://your-workspace.cloud.databricks.com

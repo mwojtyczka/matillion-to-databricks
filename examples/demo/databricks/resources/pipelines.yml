@@ -1,0 +1,11 @@
+# Lakeflow Declarative Pipeline built from sales-by-category-region.tran.yaml
+resources:
+  pipelines:
+    sales_by_category_region:
+      name: sales-by-category-region
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      serverless: true
+      libraries:
+        - file:
+            path: ../src/pipelines/sales_by_category_region.sql
