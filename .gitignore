@@ -2,3 +2,7 @@
 .claude/
 # Databricks bundle build state (caches workspace host + terraform state)
 .databricks/
+
+# Internal planning/scratch (not for public repo)
+docs/
+.superpowers/
