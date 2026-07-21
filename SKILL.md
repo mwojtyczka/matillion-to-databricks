@@ -136,6 +136,14 @@ Before writing any code, read `references/gotchas.md` — it lists the mistakes 
 
 **Ask the user how to name the Job** before emitting the bundle (and each additional Job, if there are nested orchestrations). Don't silently reuse the Matillion pipeline's internal name — propose a clean default derived from the `.orch.yaml` (e.g. `create-maia-demo-data.orch.yaml` → `maia-demo-job`) and let them confirm or override. This sets the job resource key, the `name:`, and how they'll find it in the Workflows UI, so it's worth a quick check rather than a guess.
 
+**Ask the user for the deployment/config values, don't invent them.** Every bundle variable you introduced during the hardcoded-value sweep needs a real value per target. Present the list and ask — don't guess a default and leave it (a bad `warehouse_id`/host silently breaks the first run). At minimum, confirm:
+- **`catalog` / `schema`** — the target UC namespace (resolves `[Environment Default]`).
+- **`warehouse_id`** — the SQL warehouse for SQL tasks (there is no sensible default; an empty or wrong ID fails at deploy/run). Ask for the ID, or how to obtain it.
+- **`workspace.host`** (per target: dev/prod) — leave as a placeholder in the committed file, but confirm the real host for the user's own deploy.
+- **any other variable** from the sweep — paths, connection hosts/ports, per-run inputs. Secrets are handled separately (`references/secrets.md`), not as variable values.
+
+Confirm these interactively (propose defaults where one is genuinely sensible, e.g. `catalog`); leave the committed `databricks.yml` with placeholders so no real environment values are baked in.
+
 Emit a DAB (`databricks.yml`) with:
 - one **job** resource per orchestration pipeline (`.orch.yaml`), named as agreed above, whose tasks mirror the orchestration graph: SQL tasks for `sql-executor`, a task per `run-transformation` (SQL task if the transformation is pure SQL — the common case; notebook if imperative; pipeline task only if it needs Lakeflow), a `run_job_task` for each `run-orchestration` (nested orchestration), and a notebook task for `python-script`,
 - a **pipeline** resource **only** for transformations that actually need Lakeflow (incremental/streaming or managed data-quality/lineage) — most migrations emit none,
