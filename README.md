@@ -333,3 +333,9 @@ output to the converted code already in `examples/demo/databricks/`:
 Found a component that wasn't handled well, or a mapping that's off? Note the
 Matillion component type and what you expected, and send it back so the relevant
 reference can be improved.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
