@@ -14,18 +14,37 @@ That skill handles Lakeflow pipelines + Jobs, prefers serverless compute, uses `
 **If you are running inside the workspace and CANNOT run the CLI (e.g. Databricks
 Genie / Assistant):** you cannot deploy. **Generate the bundle, then explicitly ask the
 user to run the deploy themselves** — never claim you deployed it. Give them the exact
-commands and where the bundle is:
+commands and where the bundle is.
+
+**The committed `databricks.yml` keeps placeholders** (empty `warehouse_id`, placeholder
+host) so no real environment values are baked in — which means a bare `databricks bundle
+deploy` **fails** (an empty `warehouse_id` on a SQL task errors with a cryptic
+`is not a valid endpoint id`). So the deploy command you hand the user **must pass the
+real values via `--var`** (using the values they gave you in Step 5), and set the host.
+Emit a ready-to-run command, filled in with their answers — don't leave `<...>` for the
+things you already know:
 
 > I've written the bundle to `<workspace path>`. I can't run the Databricks CLI from
-> here, so please deploy it yourself from a machine that has the CLI:
+> here, so please deploy it yourself from a machine that has the CLI. Pass the config
+> values with `--var` (the committed bundle intentionally ships with placeholders):
 > ```bash
 > databricks workspace export-dir "<workspace path>" ./migrated-bundle
 > cd ./migrated-bundle
-> # set workspace host + warehouse_id in databricks.yml first
-> databricks bundle deploy -t dev
-> databricks bundle run <job_name> -t dev
+> databricks bundle deploy -t dev --profile <profile> \
+>   --var="catalog=<catalog>" \
+>   --var="schema=<schema>" \
+>   --var="warehouse_id=<warehouse_id>"
+> databricks bundle run <job_name> -t dev --profile <profile> \
+>   --var="catalog=<catalog>" --var="schema=<schema>" --var="warehouse_id=<warehouse_id>"
 > ```
-> Tell me once it's deployed and I'll run the validation checks.
+> (The `dev` target's `workspace.host` is a placeholder — set it to your workspace URL in
+> `databricks.yml`, or ensure your `--profile` points there.) Tell me once it's deployed
+> and I'll run the validation checks.
+
+Fill every `--var` with the value the user confirmed in Step 5. `warehouse_id` has no
+default and **must** be supplied — omitting it is the most common deploy failure. If they
+didn't give one, ask (`databricks warehouses list` shows the IDs) before emitting the
+command.
 
 ## Validate — run the checklist (works in Genie too)
 

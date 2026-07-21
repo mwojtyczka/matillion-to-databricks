@@ -36,6 +36,17 @@ sql_task:
 
 `IDENTIFIER()` is required — a bare `:catalog` is treated as a string/column value, not an object name. Notebook tasks do the equivalent with `dbutils.widgets` + `base_parameters`. Full detail: `references/variables.md` → "Parameterizing catalog/schema in a SQL task".
 
+## `is not a valid endpoint id` on deploy = empty/invalid `warehouse_id`
+
+`databricks bundle deploy` failing with `Error: cannot create job:  is not a valid endpoint id` (note the blank before "is") means a SQL task was created with an **empty or invalid `warehouse_id`**. The committed `databricks.yml` ships with `warehouse_id` as a placeholder (`""`) on purpose, so a bare `databricks bundle deploy` hits this. Supply a real SQL warehouse ID:
+
+```bash
+databricks bundle deploy -t dev --profile <profile> --var="warehouse_id=<id>"
+# find IDs with:  databricks warehouses list --profile <profile>
+```
+
+(Or set the `warehouse_id` default in `databricks.yml`.) When an agent hands a user the deploy command, it must fill in `--var="warehouse_id=..."` (and the other config vars) from the user's answers — see `references/deploy-and-validate.md`.
+
 ## Seed data in `sql-executor` is not a transformation
 
 `CREATE OR REPLACE TABLE ... INSERT INTO ... VALUES (...)` blocks are demo/fixture data. Keep them as a Job setup SQL task. Do **not** model them as Lakeflow pipeline tables — the pipeline should read them as sources, not own them.
