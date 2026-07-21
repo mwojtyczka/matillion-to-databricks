@@ -10,6 +10,30 @@ Watch for inconsistency: in the samples, `sales-by-category-region.tran.yaml` us
 
 More broadly, `[Environment Default]` is just one hardcoded value among many — surface **every** literal (catalog/schema, warehouse/host, paths, connection details, credentials, tuning constants) and classify each as a bundle variable, job parameter, secret, or leave-inline. See `references/hardcoded-values.md`.
 
+## Bundle variables are NOT substituted inside SQL files
+
+`${var.catalog}` is **bundle-config** syntax — the CLI resolves it in `databricks.yml`, *not* inside a `.sql` file a SQL task runs. Writing `${var.catalog}` (or `${catalog}`) in the SQL does **not** interpolate; it runs verbatim and fails or hits the wrong object. Don't "fix" this by hardcoding the namespace back into the SQL either.
+
+Correct pattern — pass the values as **SQL task parameters** and read them with `:name` markers, setting the namespace once so tables stay unqualified:
+
+```sql
+-- top of the .sql file
+USE CATALOG IDENTIFIER(:catalog);
+USE SCHEMA  IDENTIFIER(:schema);
+CREATE OR REPLACE TABLE my_table AS SELECT ...;   -- unqualified
+```
+```yaml
+# the SQL task in databricks.yml — bundle var -> task parameter -> :marker
+sql_task:
+  warehouse_id: ${var.warehouse_id}
+  parameters:
+    catalog: ${var.catalog}
+    schema: ${var.schema}
+  file: { path: ../src/setup/my_table.sql }
+```
+
+`IDENTIFIER()` is required — a bare `:catalog` is treated as a string/column value, not an object name. Notebook tasks do the equivalent with `dbutils.widgets` + `base_parameters`. Full detail: `references/variables.md` → "Parameterizing catalog/schema in a SQL task".
+
 ## Seed data in `sql-executor` is not a transformation
 
 `CREATE OR REPLACE TABLE ... INSERT INTO ... VALUES (...)` blocks are demo/fixture data. Keep them as a Job setup SQL task. Do **not** model them as Lakeflow pipeline tables — the pipeline should read them as sources, not own them.
