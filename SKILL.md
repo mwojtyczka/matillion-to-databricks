@@ -144,13 +144,31 @@ Before writing any code, read `references/gotchas.md` — it lists the mistakes 
 
 Confirm these interactively (propose defaults where one is genuinely sensible, e.g. `catalog`); leave the committed `databricks.yml` with placeholders so no real environment values are baked in.
 
-Emit a DAB (`databricks.yml`) with:
-- one **job** resource per orchestration pipeline (`.orch.yaml`), named as agreed above, whose tasks mirror the orchestration graph: SQL tasks for `sql-executor`, a task per `run-transformation` (SQL task if the transformation is pure SQL — the common case; notebook if imperative; pipeline task only if it needs Lakeflow), a `run_job_task` for each `run-orchestration` (nested orchestration), and a notebook task for `python-script`,
-- a **pipeline** resource **only** for transformations that actually need Lakeflow (incremental/streaming or managed data-quality/lineage) — most migrations emit none,
+**Put resource definitions in a `resources/` folder and wire it in via `include:` — don't inline them in `databricks.yml`.** The top-level `databricks.yml` holds the bundle name, variables, and targets; each Job (and any pipeline) goes in its own file under `resources/`, pulled in with `include: [resources/*.yml]`. Source files (`.sql`, notebooks) live under `src/`. This is the idiomatic DAB layout and keeps `databricks.yml` readable as the project grows. Standard structure:
+
+```
+<bundle>/
+├─ databricks.yml          # bundle name, variables, include:, targets
+├─ resources/
+│  ├─ <job>.job.yml        # one file per Job (the orchestration)
+│  └─ <pipeline>.pipeline.yml   # only if a transformation needs Lakeflow
+└─ src/
+   ├─ setup/*.sql          # sql-executor + SQL-task transformations
+   └─ notebooks/*.py       # python-script / notebook tasks
+```
+```yaml
+# databricks.yml
+include:
+  - resources/*.yml
+```
+
+Emit a DAB with:
+- one **job** resource per orchestration pipeline (`.orch.yaml`) **in its own `resources/*.yml` file**, named as agreed above, whose tasks mirror the orchestration graph: SQL tasks for `sql-executor`, a task per `run-transformation` (SQL task if the transformation is pure SQL — the common case; notebook if imperative; pipeline task only if it needs Lakeflow), a `run_job_task` for each `run-orchestration` (nested orchestration), and a notebook task for `python-script`,
+- a **pipeline** resource (its own `resources/*.yml` file) **only** for transformations that actually need Lakeflow (incremental/streaming or managed data-quality/lineage) — most migrations emit none,
 - **bundle variables / job parameters** for the Matillion variables (see `references/variables.md`), so per-environment config and per-run inputs are parameterized rather than hardcoded,
 - **Databricks secret scopes** for every credential (see `references/secrets.md`) — referenced via `{{secrets/scope/key}}` / `dbutils.secrets.get` / a UC connection, never as a bundle variable or plaintext.
 
-See the worked reference bundle at `examples/demo/databricks/` — an all-SQL-tasks-plus-one-notebook Job with no pipeline resource.
+See the worked reference bundle at `examples/demo/databricks/` — a `databricks.yml` + `resources/job.yml` + `src/` layout: an all-SQL-tasks-plus-one-notebook Job with no pipeline resource.
 
 ## Step 6 — Deploy and validate
 
