@@ -4,9 +4,11 @@ Read before translating any component. Grows as new issues surface.
 
 ## `[Environment Default]` catalog/schema placeholders
 
-Matillion resolves `catalog: "[Environment Default]"` / `schema: "[Environment Default]"` from its environment config at runtime. Databricks has no equivalent — you must substitute a real UC 3-layer namespace (`catalog.schema.table`).
+Matillion resolves `catalog: "[Environment Default]"` / `schema: "[Environment Default]"` from its environment config at runtime. Databricks has no equivalent — you must substitute a real UC namespace.
 
-Watch for inconsistency: in the samples, `sales-by-category-region.tran.yaml` uses `[Environment Default]` while the `python-script` in `create-maia-demo-data.orch.yaml` hardcodes `marcin_demo.default`. Pick one target catalog/schema and apply it everywhere (ideally as a bundle variable).
+**Do not hardcode the catalog/schema — always parameterize it as a bundle variable.** The catalog and schema change between environments (dev/staging/prod), so a baked-in `main.matillion_demo` is an environment leak that forces code edits per deployment. Declare `catalog` / `schema` bundle variables once and reference them everywhere: SQL tasks via `sql_task.parameters` + `USE CATALOG IDENTIFIER(:catalog)`, notebooks via `dbutils.widgets`, Lakeflow via the pipeline's `catalog`/`schema` fields. Full pattern: `references/variables.md`.
+
+Watch for inconsistency: in the samples, `sales-by-category-region.tran.yaml` uses `[Environment Default]` while the `python-script` in `create-maia-demo-data.orch.yaml` hardcodes `marcin_demo.default`. Map **both** to the one `catalog`/`schema` variable pair so they stay consistent.
 
 More broadly, `[Environment Default]` is just one hardcoded value among many — surface **every** literal (catalog/schema, warehouse/host, paths, connection details, credentials, tuning constants) and classify each as a bundle variable, job parameter, secret, or leave-inline. See `references/hardcoded-values.md`.
 
