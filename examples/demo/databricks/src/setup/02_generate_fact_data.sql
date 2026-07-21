@@ -1,8 +1,14 @@
 -- Converted from Matillion sql-executor step "Generate Fact Data"
 -- Source: matillion/create-maia-demo-data.orch.yaml
 -- Seed/DDL -> a Job SQL task.
+--
+-- catalog/schema arrive as SQL task parameters (:catalog / :schema) and are applied via
+-- USE ... IDENTIFIER(); the table is referenced unqualified.
 
-CREATE OR REPLACE TABLE main.matillion_demo.maia_sample_sales AS
+USE CATALOG IDENTIFIER(:catalog);
+USE SCHEMA IDENTIFIER(:schema);
+
+CREATE OR REPLACE TABLE maia_sample_sales AS
 SELECT
   CAST(sale_id AS INTEGER) AS sale_id,
   CAST(product_id AS STRING) AS product_id,

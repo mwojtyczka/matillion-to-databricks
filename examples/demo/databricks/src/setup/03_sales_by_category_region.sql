@@ -14,8 +14,15 @@
 --   rewrite-table-dl "Write Output"              -> maia_sample_sales_summary target
 --
 -- "Rewrite" = full overwrite each run -> CREATE OR REPLACE TABLE.
+--
+-- Target catalog/schema are NOT hardcoded: they arrive as SQL task parameters
+-- (:catalog / :schema, sourced from the bundle variables in databricks.yml) and are
+-- applied via USE ... IDENTIFIER(), so every table below is referenced unqualified.
 
-CREATE OR REPLACE TABLE main.matillion_demo.maia_sample_sales_summary AS
+USE CATALOG IDENTIFIER(:catalog);
+USE SCHEMA IDENTIFIER(:schema);
+
+CREATE OR REPLACE TABLE maia_sample_sales_summary AS
 WITH join_products AS (
   -- join "Join Products": Sales (s) INNER JOIN Products (p)
   SELECT
@@ -26,8 +33,8 @@ WITH join_products AS (
     s.revenue,
     p.product_name,
     p.category
-  FROM main.matillion_demo.maia_sample_sales s
-  INNER JOIN main.matillion_demo.maia_sample_products p
+  FROM maia_sample_sales s
+  INNER JOIN maia_sample_products p
     ON `s`.`product_id` = `p`.`product_id`
 ),
 join_regions AS (
@@ -39,7 +46,7 @@ join_regions AS (
     sp.category,
     r.region_name
   FROM join_products sp
-  INNER JOIN main.matillion_demo.maia_sample_regions r
+  INNER JOIN maia_sample_regions r
     ON `sp`.`region_id` = `r`.`region_id`
 )
 -- aggregate "Aggregate": group by category, region_name

@@ -270,15 +270,6 @@ the flow is: **upload your Matillion files, start a fresh chat, then prompt.**
    You need a Unity Catalog workspace and permission to create the Job (and pipeline, if
    one was emitted). See `references/deploy-and-validate.md`.
 
-   > **No local CLI? (deploy from inside the workspace.)** Bundles are a CLI construct —
-   > `databricks bundle deploy` has no SDK/REST equivalent — so if you can't run the CLI,
-   > the alternative is to create the resources directly with the Databricks SDK from a
-   > **notebook** (a notebook can `import databricks.sdk` and call `w.jobs.create(...)` /
-   > `w.pipelines.create(...)`). Ask Genie to also emit a small `deploy.py` alongside the
-   > bundle, then run it as a notebook. Trade-off: this creates the Job/pipeline directly
-   > and gives up the bundle's state/diffing and target model — prefer the CLI path when
-   > you can, and use this only for locked-down setups.
-
 5. **Validate.** Genie *can* run SQL, so you can ask it in-chat to run the validation
    checklist (tables exist, row counts sane, an aggregate spot-check) against the
    deployed tables — or run the queries yourself. See `references/deploy-and-validate.md`.

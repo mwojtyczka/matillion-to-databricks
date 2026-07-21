@@ -16,10 +16,15 @@ resources:
         - name: schema
           default: ${var.schema}
       tasks:
-        # sql-executor "Dimension Tables" -> SQL task (seed/DDL)
+        # sql-executor "Dimension Tables" -> SQL task (seed/DDL).
+        # catalog/schema are passed as SQL task parameters (bound to :catalog / :schema
+        # in the .sql via USE ... IDENTIFIER()), so the namespace is never hardcoded.
         - task_key: dimension_tables
           sql_task:
             warehouse_id: ${var.warehouse_id}
+            parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
             file:
               path: ../src/setup/01_dimension_tables.sql
 
@@ -29,6 +34,9 @@ resources:
             - task_key: dimension_tables
           sql_task:
             warehouse_id: ${var.warehouse_id}
+            parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
             file:
               path: ../src/setup/02_generate_fact_data.sql
 
@@ -41,6 +49,9 @@ resources:
             - task_key: generate_fact_data
           sql_task:
             warehouse_id: ${var.warehouse_id}
+            parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
             file:
               path: ../src/setup/03_sales_by_category_region.sql
 

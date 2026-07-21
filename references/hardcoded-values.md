@@ -68,3 +68,9 @@ Never print a real secret value in this table — show the key name / a placehol
 - **Confirm, don't assume.** The recommended target is a default, not a decision — the
   user may know a "config" value is actually a fixed constant, or that a constant should
   be parameterized for a planned multi-env rollout.
+- **Wire it through to the code, not just the bundle.** Declaring a bundle variable isn't
+  enough — the SQL/notebook must actually *read* it, or the literal is still hardcoded in
+  the file. In a **SQL task**, pass it as a task parameter and reference it with a `:name`
+  marker (for catalog/schema: `USE CATALOG IDENTIFIER(:catalog)` + unqualified tables). In
+  a **notebook**, use `dbutils.widgets` + `base_parameters`. See
+  `references/variables.md` → "Parameterizing catalog/schema in a SQL task".

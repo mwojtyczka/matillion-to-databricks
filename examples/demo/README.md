@@ -48,9 +48,14 @@ managed data-quality.
 
 ## Conversions worth noting
 
-- **`[Environment Default]` → real UC names.** The Matillion source left catalog/schema
-  as `[Environment Default]`; the output resolves them to `main.matillion_demo`,
-  parameterized as bundle variables (`${var.catalog}` / `${var.schema}`).
+- **`[Environment Default]` → parameterized UC names (not hardcoded).** The Matillion
+  source left catalog/schema as `[Environment Default]`. The output keeps them out of the
+  SQL entirely: the `catalog`/`schema` bundle variables are passed as **SQL task
+  parameters**, and each `.sql` file sets the namespace at the top with
+  `USE CATALOG IDENTIFIER(:catalog)` / `USE SCHEMA IDENTIFIER(:schema)` and then references
+  every table **unqualified**. Change the target by editing the variables (or
+  `--var catalog=…`), never the SQL. (The notebook does the equivalent with
+  `dbutils.widgets`.)
 - **python-script plumbing removed.** The original used `context.cursor()` / `subprocess`
   (Matillion-runtime only). The notebook keeps just the SQL, run via `spark.sql(...)`,
   and parameterizes the hardcoded `marcin_demo.default` that leaked into the script.

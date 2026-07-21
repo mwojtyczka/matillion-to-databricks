@@ -2,8 +2,7 @@
 
 ## Deploy — depends on whether *you* (the agent) can run the CLI
 
-Deploying a bundle runs the **Databricks CLI** (`databricks bundle deploy`) — there is no
-SDK/REST equivalent. Who runs it depends on where the agent is running:
+Deploying a bundle runs the **Databricks CLI** (`databricks bundle deploy`). Who runs it depends on where the agent is running:
 
 **If you can run a shell / the CLI (e.g. Claude Code):** deploy directly. Delegate to the
 deployment skill rather than hand-rolling commands:
@@ -27,12 +26,6 @@ commands and where the bundle is:
 > databricks bundle run <job_name> -t dev
 > ```
 > Tell me once it's deployed and I'll run the validation checks.
-
-> **No local CLI at all?** Bundles are CLI-only, so the fallback is to create the
-> resources directly with the Databricks SDK from a **notebook** (`import databricks.sdk`
-> → `w.jobs.create(...)` / `w.pipelines.create(...)`). Offer to also emit a `deploy.py`
-> the user can run as a notebook. This gives up the bundle's state/diffing and target
-> model, so prefer the CLI path when it's available.
 
 ## Validate — run the checklist (works in Genie too)
 

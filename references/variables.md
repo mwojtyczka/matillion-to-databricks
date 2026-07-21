@@ -44,8 +44,42 @@ For SQL-only flows, write the value to a small state table instead.
 |---|---|---|
 | Static/env config | `${env_var}` | `${var.env_var}` (bundle) |
 | Per-run input in a task | `${job_var}` | `{{job.parameters.job_var}}` |
+| **In a SQL-task `.sql` file** | `${var}` | **`:name` parameter marker**, bound by the task's `parameters:` map |
 | In pipeline (Lakeflow) SQL | `${var}` | pipeline configuration → `${var}` in SQL, or a spark conf |
 | Computed mid-run | `updateScalarVariables` | `dbutils.jobs.taskValues` |
+| In a notebook task | `${var}` | `dbutils.widgets.get("name")` (task `base_parameters`) |
+
+## Parameterizing catalog/schema in a SQL task (don't hardcode the namespace)
+
+A SQL-task `.sql` file can't use `${var.x}` (that's bundle-config syntax, resolved before
+the file runs). Instead, pass values as **SQL task parameters** and reference them with
+`:name` markers. For the target namespace, set it once at the top with
+`USE ... IDENTIFIER()` and then reference every table **unqualified** — so the
+catalog/schema live in the bundle variables, never baked into the SQL:
+
+```sql
+-- top of the .sql file
+USE CATALOG IDENTIFIER(:catalog);
+USE SCHEMA  IDENTIFIER(:schema);
+
+CREATE OR REPLACE TABLE my_table AS SELECT ...;   -- unqualified; lands in :catalog.:schema
+```
+
+```yaml
+# the SQL task in databricks.yml — bind the markers to bundle variables
+- task_key: build_table
+  sql_task:
+    warehouse_id: ${var.warehouse_id}
+    parameters:
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+    file:
+      path: ../src/setup/build_table.sql
+```
+
+`IDENTIFIER()` is required — a bare `:catalog` is treated as a string/column value, not an
+object name. The reference bundle (`examples/demo/databricks/`) uses exactly this for all
+three SQL tasks. (Notebook tasks do the equivalent with `dbutils.widgets` + `base_parameters`.)
 
 ## Gotchas
 
