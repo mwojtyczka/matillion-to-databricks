@@ -241,13 +241,15 @@ the flow is: **upload your Matillion files, start a fresh chat, then prompt.**
    > **@matillion-to-databricks — migrate the Matillion pipelines in
    > `/Workspace/Users/<you>/matillion-migration/source/` to Databricks, and write the
    > resulting Databricks Asset Bundle into
-   > `/Workspace/Users/<you>/matillion-migration/output/`. Follow the skill's decision
-   > ladder and gotchas, and ask me for the real Unity Catalog `catalog.schema` to
-   > replace any Matillion `[Environment Default]` placeholders before writing code.**
+   > `/Workspace/Users/<you>/matillion-migration/output/`.**
 
-3. **Answer the placeholder question.** The skill will ask for a real Unity Catalog
-   namespace (Matillion `[Environment Default]` has no Databricks equivalent) — give it
-   a `catalog.schema` you have write access to.
+   The skill drives the rest — you don't need to spell out the details in the prompt.
+
+3. **Answer its questions.** The skill will ask for the things it shouldn't guess — the
+   target Unity Catalog `catalog.schema` (Matillion `[Environment Default]` has no
+   Databricks equivalent), the SQL `warehouse_id`, the Job name, and any other config
+   values — plus how to handle each hardcoded value / secret it surfaces. Answer with a
+   namespace you have write access to and your preferred names.
 
 4. **Deploy it yourself with the CLI.** Genie *generates* the bundle in your Workspace,
    but it can't deploy it — deploying runs the Databricks CLI (`databricks bundle
