@@ -1,4 +1,4 @@
-# Matillion `table-input` → Lakeflow source read
+# Matillion `table-input` → source read (a `FROM`)
 
 ## What it does in Matillion
 
@@ -17,11 +17,11 @@ SELECT sale_id, product_id, region_id, quantity, revenue
 FROM my_catalog.my_schema.maia_sample_sales
 ```
 
-If the source is produced by an upstream pipeline step, reference it by plain name — each intermediate transformation component becomes its own `CREATE OR REFRESH MATERIALIZED VIEW <name> AS SELECT ...` (or a CTE) that downstream components reference by name, so bare `FROM sales` or `FROM join_regions` in later components resolves correctly. (`LIVE.<name>` is legacy-compatible DLT syntax; current Lakeflow SQL can use the plain dataset name directly.)
+`table-input` reads a real UC table, so it becomes a `FROM my_catalog.my_schema.<targetTable>` — usually **inlined** into the consuming query (a CTE or the source of a `JOIN`), not its own materialized view. A bare projection over a source table earns nothing by being materialized. Only promote it to its own dataset if it's reused by several downstream datasets or needs its own expectations (see `references/transformation/rewrite-table.md` → "Consolidate the chain"). If the source is instead produced by an upstream pipeline step, reference that step by its plain dataset name. (`LIVE.<name>` is legacy-compatible DLT syntax; current Lakeflow SQL can use the plain dataset name directly.)
 
 ## Worked example (from sales-by-category-region.tran.yaml)
 
-`Sales`, `Products`, `Regions` are three `table-input` components. Each maps to a `SELECT <columnNames> FROM <catalog>.<schema>.<targetTable>`. These become the source datasets that the `join` components consume.
+`Sales`, `Products`, `Regions` are three `table-input` components. Each maps to a `FROM <catalog>.<schema>.<targetTable>` with the `columnNames` applied as the projection. In the consolidated reference implementation these are inlined directly into the `JOIN`s (their explicit column lists become the CTE SELECT lists) rather than becoming three standalone materialized views.
 
 ## Gotchas
 

@@ -22,14 +22,14 @@ FROM sales s
 INNER JOIN products p ON `s`.`product_id` = `p`.`product_id`
 ```
 
-Chained joins (a `join` whose `sources` include another `join`) become a CTE chain or a nested pipeline dataset.
+Chained joins (a `join` whose `sources` include another `join`) become a **CTE chain** by default — each join is one CTE feeding the next, all inside the target MV. Promote a join to its own materialized view only if it's reused, branches, or needs expectations (see `references/transformation/rewrite-table.md` → "Consolidate the chain").
 
 ## Worked example (from sales-by-category-region.tran.yaml)
 
 - `Join Products`: main `Sales` alias `s` INNER JOIN `Products` alias `p` on `s.product_id = p.product_id`.
 - `Join Regions`: main `Join Products` alias `sp` INNER JOIN `Regions` alias `r` on `sp.region_id = r.region_id`.
 
-The two chain: `Join Regions` consumes the output of `Join Products`. In Lakeflow, express as two materialized views or a single view with a CTE.
+The two chain: `Join Regions` consumes the output of `Join Products`. In the reference implementation both are CTEs (`join_products`, `join_regions`) inside the single target MV — not two separate materialized views.
 
 ## Gotchas
 

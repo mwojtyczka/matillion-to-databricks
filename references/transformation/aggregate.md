@@ -25,7 +25,7 @@ GROUP BY category, region_name
 
 ## Worked example (from sales-by-category-region.tran.yaml)
 
-`Aggregate` groups the `Join Regions` output by `category`, `region_name` and computes `Sum(revenue)`, `Sum(quantity)`, `Count(sale_id)`.
+`Aggregate` groups the `Join Regions` output by `category`, `region_name` and computes `Sum(revenue)`, `Sum(quantity)`, `Count(sale_id)`. Since it feeds straight into the single `rewrite-table-dl` target, the reference implementation makes this `GROUP BY` the **final SELECT of the target MV** (consuming the `join_regions` CTE) rather than a standalone `mv_aggregate`. See `references/transformation/rewrite-table.md` → "Consolidate the chain".
 
 ## Gotchas
 

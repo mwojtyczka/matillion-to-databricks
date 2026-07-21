@@ -32,14 +32,19 @@ resources:
             file:
               path: ../src/setup/02_generate_fact_data.sql
 
-        # run-transformation "Run Transformation" -> pipeline task (the Lakeflow pipeline)
+        # run-transformation "Run Transformation" -> SQL task.
+        # The transformation is pure full-refresh SQL with a single output and no
+        # Lakeflow features (streaming/expectations/reuse), so it runs as a SQL task
+        # rather than a Lakeflow pipeline. See the skill's transformation references.
         - task_key: run_transformation
           depends_on:
             - task_key: generate_fact_data
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.sales_by_category_region.id}
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/setup/03_sales_by_category_region.sql
 
-        # python-script "Create Aggregation Table" -> notebook task
+        # python-script "Create Aggregation Table" -> notebook task, depends on run_transformation
         - task_key: create_aggregation_table
           depends_on:
             - task_key: run_transformation

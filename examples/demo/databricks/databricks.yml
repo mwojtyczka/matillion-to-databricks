@@ -2,7 +2,11 @@
 #
 # Mapping:
 #   create-maia-demo-data.orch.yaml (orchestration pipeline) -> a Databricks Job
-#   sales-by-category-region.tran.yaml (transformation pipeline) -> a Lakeflow pipeline
+#   sales-by-category-region.tran.yaml (transformation pipeline) -> a Job SQL task
+#     (pure full-refresh SQL, single output, no Lakeflow features -> no pipeline needed)
+#
+# Every task runs on the Job's task graph: SQL tasks for the setup + transform,
+# a notebook task for the python-script aggregation. No Lakeflow pipeline resource.
 #
 # Deploy with:  databricks bundle deploy -t dev
 # Run with:     databricks bundle run maia_demo_job -t dev
@@ -18,7 +22,7 @@ variables:
     default: matillion_demo
   warehouse_id:
     description: SQL warehouse ID for the sql-executor (setup) tasks
-    default: ""
+    default: "75fd8278393d07eb"
 
 include:
   - resources/*.yml
@@ -28,7 +32,7 @@ targets:
     mode: development
     default: true
     workspace:
-      host: https://your-workspace.cloud.databricks.com
+      host: https://e2-demo-west.cloud.databricks.com
   prod:
     mode: production
     workspace:

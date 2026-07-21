@@ -2,7 +2,7 @@
 
 ## Deploy — delegate to databricks-resource-deployment
 
-Emit a DAB bundle (`databricks.yml`) with the Job + Lakeflow pipeline resources and their source files, then hand off:
+Emit a DAB bundle (`databricks.yml`) with the Job resource (and a Lakeflow pipeline resource only if some transformation needed one) plus their source files, then hand off:
 
 > "use the databricks-resource-deployment skill to deploy this bundle"
 
