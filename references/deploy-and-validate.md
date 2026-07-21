@@ -1,16 +1,45 @@
 # Deploy and validate
 
-## Deploy — delegate to databricks-resource-deployment
+## Deploy — depends on whether *you* (the agent) can run the CLI
 
-Emit a DAB bundle (`databricks.yml`) with the Job resource (and a Lakeflow pipeline resource only if some transformation needed one) plus their source files, then hand off:
+Deploying a bundle runs the **Databricks CLI** (`databricks bundle deploy`) — there is no
+SDK/REST equivalent. Who runs it depends on where the agent is running:
+
+**If you can run a shell / the CLI (e.g. Claude Code):** deploy directly. Delegate to the
+deployment skill rather than hand-rolling commands:
 
 > "use the databricks-resource-deployment skill to deploy this bundle"
 
-That skill handles Lakeflow pipelines + Jobs, prefers serverless compute, uses `databricks sync`, and enforces UC 3-layer namespaces. Do not hand-roll deploy commands.
+That skill handles Lakeflow pipelines + Jobs, prefers serverless compute, uses `databricks sync`, and enforces UC 3-layer namespaces.
 
-## Validate — delegate to databricks-query
+**If you are running inside the workspace and CANNOT run the CLI (e.g. Databricks
+Genie / Assistant):** you cannot deploy. **Generate the bundle, then explicitly ask the
+user to run the deploy themselves** — never claim you deployed it. Give them the exact
+commands and where the bundle is:
 
-After deploy, use the `fe-databricks-tools:databricks-query` skill to run this checklist:
+> I've written the bundle to `<workspace path>`. I can't run the Databricks CLI from
+> here, so please deploy it yourself from a machine that has the CLI:
+> ```bash
+> databricks workspace export-dir "<workspace path>" ./migrated-bundle
+> cd ./migrated-bundle
+> # set workspace host + warehouse_id in databricks.yml first
+> databricks bundle deploy -t dev
+> databricks bundle run <job_name> -t dev
+> ```
+> Tell me once it's deployed and I'll run the validation checks.
+
+> **No local CLI at all?** Bundles are CLI-only, so the fallback is to create the
+> resources directly with the Databricks SDK from a **notebook** (`import databricks.sdk`
+> → `w.jobs.create(...)` / `w.pipelines.create(...)`). Offer to also emit a `deploy.py`
+> the user can run as a notebook. This gives up the bundle's state/diffing and target
+> model, so prefer the CLI path when it's available.
+
+## Validate — run the checklist (works in Genie too)
+
+After deploy, run this checklist. In Claude Code, use the
+`fe-databricks-tools:databricks-query` skill; in Genie, run the SQL in-chat (Genie can
+execute SQL even though it can't run the CLI). If you couldn't deploy, run this only
+after the user confirms the deploy succeeded.
 
 - [ ] Every target table from each `rewrite-table-dl` and every `sql-executor`/`python-script` output exists.
   ```sql

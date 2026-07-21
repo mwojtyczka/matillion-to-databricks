@@ -144,6 +144,9 @@ See the worked reference bundle at `examples/demo/databricks/` — an all-SQL-ta
 
 ## Step 6 — Deploy and validate
 
-Use the `fe-databricks-tools:databricks-resource-deployment` skill for all deployment (it handles Jobs + Lakeflow pipelines, prefers serverless, uses `databricks sync`, and UC 3-layer namespaces). Trigger it with: "use the databricks-resource-deployment skill to deploy this bundle".
+**Deploying runs the Databricks CLI (`databricks bundle deploy`) — there is no SDK/REST equivalent. Who runs it depends on where you (the agent) are running:**
 
-Then use `fe-databricks-tools:databricks-query` to validate. Follow the checklist in `references/deploy-and-validate.md`.
+- **If you can run a shell/CLI (e.g. Claude Code):** deploy via the `fe-databricks-tools:databricks-resource-deployment` skill (it handles Jobs + Lakeflow pipelines, prefers serverless, uses `databricks sync`, and UC 3-layer namespaces). Trigger it with: "use the databricks-resource-deployment skill to deploy this bundle".
+- **If you're inside the workspace and CANNOT run the CLI (e.g. Databricks Genie):** you cannot deploy. **Generate the bundle, then explicitly ask the user to run `databricks bundle deploy` themselves** — hand them the exact commands and the bundle's location, and never claim you deployed it.
+
+Then validate: in Claude Code use `fe-databricks-tools:databricks-query`; in Genie run the checklist SQL in-chat (Genie can run SQL). Follow the checklist in `references/deploy-and-validate.md`.
