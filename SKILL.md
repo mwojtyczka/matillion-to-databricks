@@ -82,8 +82,9 @@ find . -name '*.orch.yaml' -o -name '*.tran.yaml'
 - For each orchestration pipeline, note every `run-transformation` step (which `.tran.yaml` it names via `transformationJob:`) and every `run-orchestration` step (which `.orch.yaml` it names via `orchestrationJob:`). This tells you which pipeline feeds which Job task and which orchestrations are nested inside others.
 - Note every variable the pipelines declare, pass (`setScalarVariables`/`setGridVariables`), or read (`${...}`) — variables migrate alongside the pipelines. See `references/variables.md`.
 - **Flag every secret/credential** — connection passwords, API tokens, storage keys, OAuth entries, or values sourced from a cloud secret manager (AWS Secrets Manager, Azure Key Vault, GCP Secret Manager). These migrate to **Databricks secrets**, not to variables or code. See `references/secrets.md`.
+- **Sweep for every other hardcoded value** — catalog/schema names, warehouse/host IDs, storage paths, connection details, tuning/business literals. Don't carry any literal across blindly: each one is a candidate for a bundle variable, a job parameter, a secret, or staying inline. See `references/hardcoded-values.md`.
 
-Write down: the list of orchestration pipelines, what each one calls (transformations and nested orchestrations), the variables in play, the secrets in play (and their current source), and any transformation not called by anything (a standalone pipeline).
+Write down: the list of orchestration pipelines, what each one calls (transformations and nested orchestrations), the variables in play, the secrets in play (and their current source), every hardcoded value worth surfacing, and any transformation not called by anything (a standalone pipeline).
 
 ## Step 2 — Parse the orchestration graph
 
@@ -128,6 +129,8 @@ Quick lookup for every type: `references/mapping-cheatsheet.md`.
 For every component in every file, open its reference and translate it. Default to **SQL** (`CREATE OR REPLACE TABLE ... AS SELECT` for a SQL task, or `CREATE OR REFRESH MATERIALIZED VIEW` inside a Lakeflow pipeline); use **PySpark in a notebook** where SQL can't express it or the source is imperative. Choose the executor per the ladder in "The two decisions".
 
 Before writing any code, read `references/gotchas.md` — it lists the mistakes that waste the most time (unresolved `[Environment Default]` placeholders, seed data mistaken for transforms, Matillion-runtime Python APIs). If the project uses any credentials, also read `references/secrets.md` — secrets go in Databricks secret scopes and are referenced at runtime, never inlined or turned into bundle variables.
+
+**Surface every hardcoded value and let the user choose its target.** Don't silently carry a literal across. For each one, classify it and propose a target — **secret** (credentials), **bundle variable** (per-environment config), **job parameter** (per-run input), or **leave inline** (true constants) — explain why, and confirm before wiring. Present the findings as a table (redact secret values). Full triage: `references/hardcoded-values.md`.
 
 ## Step 5 — Assemble the Databricks Asset Bundle
 

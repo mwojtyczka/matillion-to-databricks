@@ -59,6 +59,17 @@ These are the *pieces* of one consolidated query (CTEs / SELECT clauses), not se
 
 **Never** map a secret to a bundle variable or job parameter — those are plaintext.
 
+## Hardcoded values — surface and classify
+
+Don't carry any literal across blindly. Sweep every component param + inline SQL/Python and pick a target (confirm with the user). See `hardcoded-values.md`.
+
+| Value | Target |
+|---|---|
+| Credential / token / key | **Databricks secret** |
+| Per-environment config (catalog, schema, warehouse, host, path) | **bundle variable** `${var.x}` |
+| Per-run input (date, mode, filter) | **job parameter** `{{job.parameters.x}}` |
+| True constant (fixed rule, stable enum) | **leave inline** |
+
 ## Default choices
 
 - Executor per transformation: **SQL task** (default) → **notebook** (imperative) → **Lakeflow** (incremental/streaming or managed DQ+lineage only). Python only when SQL can't express it.

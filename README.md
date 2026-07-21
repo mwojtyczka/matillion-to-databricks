@@ -63,10 +63,13 @@ them explains most of what the skill produces.
    Choose *how* each step runs — don't fold the whole pipeline into one
    opaque task/notebook.
 
-5. **Resolve environment leaks explicitly.** Matillion `[Environment Default]`
-   catalog/schema placeholders and any hardcoded namespaces are surfaced and replaced
-   with real Unity Catalog 3-layer names, parameterized as bundle variables / job
-   parameters rather than baked in.
+5. **Surface every hardcoded value; you choose the target.** No literal is carried
+   across blindly — `[Environment Default]` placeholders, catalog/schema names,
+   warehouse/host IDs, paths, connection details, credentials, and tuning constants are
+   all surfaced. Each is classified with a **recommended** target — a **secret**
+   (credentials), a **bundle variable** (per-environment config), a **job parameter**
+   (per-run input), or **left inline** (true constants) — and you confirm or override
+   before it's wired. See `references/hardcoded-values.md`.
 
 6. **Secrets go to Databricks secrets — never to variables or code.** Credentials the
    Matillion project uses (connection passwords, API tokens, storage keys, or values
@@ -94,6 +97,7 @@ references/                  ← per-component + cross-cutting reference docs
   ├─ gotchas.md
   ├─ variables.md
   ├─ secrets.md
+  ├─ hardcoded-values.md
   ├─ deploy-and-validate.md
   ├─ transformation/         ← table-input, join, aggregate, rewrite-table
   └─ orchestration/          ← start-end, sql-executor, run-transformation,

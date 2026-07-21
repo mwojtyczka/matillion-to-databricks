@@ -8,6 +8,8 @@ Matillion resolves `catalog: "[Environment Default]"` / `schema: "[Environment D
 
 Watch for inconsistency: in the samples, `sales-by-category-region.tran.yaml` uses `[Environment Default]` while the `python-script` in `create-maia-demo-data.orch.yaml` hardcodes `marcin_demo.default`. Pick one target catalog/schema and apply it everywhere (ideally as a bundle variable).
 
+More broadly, `[Environment Default]` is just one hardcoded value among many — surface **every** literal (catalog/schema, warehouse/host, paths, connection details, credentials, tuning constants) and classify each as a bundle variable, job parameter, secret, or leave-inline. See `references/hardcoded-values.md`.
+
 ## Seed data in `sql-executor` is not a transformation
 
 `CREATE OR REPLACE TABLE ... INSERT INTO ... VALUES (...)` blocks are demo/fixture data. Keep them as a Job setup SQL task. Do **not** model them as Lakeflow pipeline tables — the pipeline should read them as sources, not own them.
