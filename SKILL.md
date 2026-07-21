@@ -81,8 +81,9 @@ find . -name '*.orch.yaml' -o -name '*.tran.yaml'
 - Orchestration pipelines are the entry points.
 - For each orchestration pipeline, note every `run-transformation` step (which `.tran.yaml` it names via `transformationJob:`) and every `run-orchestration` step (which `.orch.yaml` it names via `orchestrationJob:`). This tells you which pipeline feeds which Job task and which orchestrations are nested inside others.
 - Note every variable the pipelines declare, pass (`setScalarVariables`/`setGridVariables`), or read (`${...}`) — variables migrate alongside the pipelines. See `references/variables.md`.
+- **Flag every secret/credential** — connection passwords, API tokens, storage keys, OAuth entries, or values sourced from a cloud secret manager (AWS Secrets Manager, Azure Key Vault, GCP Secret Manager). These migrate to **Databricks secrets**, not to variables or code. See `references/secrets.md`.
 
-Write down: the list of orchestration pipelines, what each one calls (transformations and nested orchestrations), the variables in play, and any transformation not called by anything (a standalone pipeline).
+Write down: the list of orchestration pipelines, what each one calls (transformations and nested orchestrations), the variables in play, the secrets in play (and their current source), and any transformation not called by anything (a standalone pipeline).
 
 ## Step 2 — Parse the orchestration graph
 
@@ -98,6 +99,7 @@ See:
 | `run-orchestration` | `references/orchestration/run-orchestration.md` |
 | `python-script` | `references/orchestration/python-script.md` |
 | variables (all scopes) | `references/variables.md` |
+| secrets / credentials | `references/secrets.md` |
 
 ## Step 3 — Parse each transformation graph
 
@@ -125,14 +127,15 @@ Quick lookup for every type: `references/mapping-cheatsheet.md`.
 
 For every component in every file, open its reference and translate it. Default to **SQL** (`CREATE OR REPLACE TABLE ... AS SELECT` for a SQL task, or `CREATE OR REFRESH MATERIALIZED VIEW` inside a Lakeflow pipeline); use **PySpark in a notebook** where SQL can't express it or the source is imperative. Choose the executor per the ladder in "The two decisions".
 
-Before writing any code, read `references/gotchas.md` — it lists the mistakes that waste the most time (unresolved `[Environment Default]` placeholders, seed data mistaken for transforms, Matillion-runtime Python APIs).
+Before writing any code, read `references/gotchas.md` — it lists the mistakes that waste the most time (unresolved `[Environment Default]` placeholders, seed data mistaken for transforms, Matillion-runtime Python APIs). If the project uses any credentials, also read `references/secrets.md` — secrets go in Databricks secret scopes and are referenced at runtime, never inlined or turned into bundle variables.
 
 ## Step 5 — Assemble the Databricks Asset Bundle
 
 Emit a DAB (`databricks.yml`) with:
 - one **job** resource per orchestration pipeline (`.orch.yaml`), whose tasks mirror the orchestration graph: SQL tasks for `sql-executor`, a task per `run-transformation` (SQL task if the transformation is pure SQL — the common case; notebook if imperative; pipeline task only if it needs Lakeflow), a `run_job_task` for each `run-orchestration` (nested orchestration), and a notebook task for `python-script`,
 - a **pipeline** resource **only** for transformations that actually need Lakeflow (incremental/streaming or managed data-quality/lineage) — most migrations emit none,
-- **bundle variables / job parameters** for the Matillion variables (see `references/variables.md`), so per-environment config and per-run inputs are parameterized rather than hardcoded.
+- **bundle variables / job parameters** for the Matillion variables (see `references/variables.md`), so per-environment config and per-run inputs are parameterized rather than hardcoded,
+- **Databricks secret scopes** for every credential (see `references/secrets.md`) — referenced via `{{secrets/scope/key}}` / `dbutils.secrets.get` / a UC connection, never as a bundle variable or plaintext.
 
 See the worked reference bundle at `examples/demo/databricks/` — an all-SQL-tasks-plus-one-notebook Job with no pipeline resource.
 

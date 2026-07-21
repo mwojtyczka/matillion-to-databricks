@@ -49,6 +49,16 @@ These are the *pieces* of one consolidated query (CTEs / SELECT clauses), not se
 | Grid variable | `for_each` input / UC lookup table | `variables.md` |
 | `updateScalarVariables` (write-back) | task values (`dbutils.jobs.taskValues`) | `variables.md` |
 
+## Secrets (never variables)
+
+| Matillion secret source | Databricks | Reference |
+|---|---|---|
+| Connection/profile password, API token, storage key | Databricks **secret scope** | `secrets.md` |
+| Cloud secret manager (AWS SM / Azure Key Vault / GCP SM) | secret scope (Key Vault-backed on Azure) | `secrets.md` |
+| Referenced from a task/notebook | `{{secrets/scope/key}}` / `dbutils.secrets.get` / UC connection | `secrets.md` |
+
+**Never** map a secret to a bundle variable or job parameter — those are plaintext.
+
 ## Default choices
 
 - Executor per transformation: **SQL task** (default) → **notebook** (imperative) → **Lakeflow** (incremental/streaming or managed DQ+lineage only). Python only when SQL can't express it.

@@ -30,3 +30,9 @@ After deploy, use the `fe-databricks-tools:databricks-query` skill to run this c
 ## Gotcha
 
 Grant the pipeline/job's principal UC access (`USE CATALOG`, `USE SCHEMA`, `SELECT`/`MODIFY`) before the first run, or tasks fail with permission errors. The databricks-resource-deployment skill covers the grant pattern.
+
+If the migration uses secrets (`references/secrets.md`), also grant the run-as principal `READ` on the secret scope(s), or any task that calls `dbutils.secrets.get` / `{{secrets/...}}` fails at runtime:
+
+```bash
+databricks secrets put-acl matillion_migration <run-as-principal> READ
+```

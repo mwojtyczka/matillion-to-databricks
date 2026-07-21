@@ -40,6 +40,10 @@ Mapping every Matillion transformation component to its own `CREATE OR REFRESH M
 
 Lakeflow does **not** drop a table when you remove or rename its defining query in the pipeline — the old dataset just stops updating and lingers in the schema. After consolidating a 1:1 mapping (or renaming any MV/streaming table), manually `DROP` the now-orphaned tables, or `SHOW TABLES` will keep showing stale intermediates that look like real outputs.
 
+## Secrets are not variables
+
+Credentials in the Matillion project (connection passwords, API tokens, storage keys, or values sourced from a cloud secret manager) migrate to **Databricks secret scopes**, referenced at runtime via `{{secrets/scope/key}}` / `dbutils.secrets.get` / a UC connection. **Never** map a secret to a bundle variable (`${var.x}`) or job parameter — those are plaintext and show up in the UI, `bundle summary`, and run logs. Never write a secret into a source file or the migration notes; if an export contains a plaintext credential, rotate it. Grant the run-as principal `READ` on the scope before the first run. See `references/secrets.md`.
+
 ## Nested orchestrations (`run-orchestration`)
 
 An orchestration pipeline can call another orchestration pipeline (`run-orchestration`, the shared-job pattern) — distinct from `run-transformation`. It maps to a `run_job_task` (nested Databricks Job), not a pipeline task. Deeply nested chains may hit Databricks' nested-job depth limits; inline (flatten) when the child isn't genuinely reused across parents. See `references/orchestration/run-orchestration.md`.

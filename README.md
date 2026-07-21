@@ -39,40 +39,46 @@ them explains most of what the skill produces.
    every step/transformation, walk that ladder and stop at the first fit:
    - **SQL task** for pure, batch/full-refresh SQL (the common case) — warehouse-native,
      no cluster, cheapest.
-   - **Notebook** when there's imperative logic, mixed SQL + Python, or you just want a
+   - **Notebook** when there's imperative logic, mixed SQL + Python, or Python, or you just want a
      faithful, steppable landing for a migration.
-   - **Lakeflow only when it earns it** (see next point).
-
-3. **Lakeflow is an escape hatch, not the default.** A Lakeflow Declarative Pipeline is a
+   - **Lakeflow only when it earns it**. A Lakeflow Declarative Pipeline is a
    separate resource with its own compute and deploy surface. Reach for it *only* when
-   you actually use what it provides: incremental/streaming (CDC), managed data-quality
-   expectations, or automatic multi-table lineage. A single full-refresh transform uses
-   none of that, so wrapping it in a pipeline is just a SQL task carrying overhead.
+   you actually use what it provides: incremental/streaming (CDC) or automatic multi-table lineage. 
+   A single full-refresh transform uses none of that, so wrapping it in a pipeline is just a SQL task carrying overhead.
 
-4. **Consolidate the transformation dataflow — don't mirror Matillion's step division.**
+3. **Consolidate the transformation dataflow — don't mirror Matillion's step division.**
    Matillion splits a transform into many explicit components (`table-input` → `join` →
    `join` → `aggregate` → `rewrite-table-dl`). Translating each into its own
    table/view/task is faithful but redundant — every intermediate becomes an object that
-   gets recomputed (and, in Lakeflow, stored) each run. Instead, **collapse a linear
+   gets recomputed each run. Instead, **collapse a linear
    chain that yields one output into a single query using CTEs.** In the demo, 7 Matillion
    components became **one** `CREATE OR REPLACE TABLE … WITH … SELECT` — identical result,
    one object instead of seven. Keep a step separate only when it's genuinely *reused*,
    needs its own *expectations*, or is a real *branch point*.
 
-5. **Preserve the orchestration graph; don't over-consolidate control flow.** Collapsing
-   *dataflow* (point 4) is good; collapsing *control flow* is not. Keep **one Job task per
+4. **Preserve the orchestration graph; don't over-consolidate control flow.** Collapsing
+   *dataflow* (point 3) is good; collapsing *control flow* is not. Keep **one Job task per
    Matillion step** so you retain per-step retries, repair-runs, observability, and
-   parallelism. Choose *how* each step runs — don't fold the whole pipeline into one
+   parallelism, as well as easier human reasoning during the migration. 
+   Choose *how* each step runs — don't fold the whole pipeline into one
    opaque task/notebook.
 
-6. **Resolve environment leaks explicitly.** Matillion `[Environment Default]`
+5. **Resolve environment leaks explicitly.** Matillion `[Environment Default]`
    catalog/schema placeholders and any hardcoded namespaces are surfaced and replaced
    with real Unity Catalog 3-layer names, parameterized as bundle variables / job
    parameters rather than baked in.
 
+6. **Secrets go to Databricks secrets — never to variables or code.** Credentials the
+   Matillion project uses (connection passwords, API tokens, storage keys, or values
+   sourced from a cloud secret manager) are migrated into **Databricks secret scopes**
+   and referenced at runtime (`{{secrets/scope/key}}` / `dbutils.secrets.get` / a Unity
+   Catalog connection). They are **never** turned into bundle variables or job
+   parameters (those are plaintext) or written into source files. See
+   `references/secrets.md`.
+
 7. **Migrate by intent, not line-by-line.** `python-script` steps that call
    Matillion-runtime APIs (`context.cursor()`, `subprocess`, …) are translated to their
-   real payload (usually SQL via `spark.sql(...)`); the runtime plumbing is dropped.
+   real payload (usually SQL via `spark.sql(...)`); the Matillion specific runtime plumbing is dropped.
 
 > The full rationale lives in `SKILL.md` → *"The two decisions of every migration"* and
 > the transformation references. This list is the summary.
@@ -87,6 +93,7 @@ references/                  ← per-component + cross-cutting reference docs
   ├─ mapping-cheatsheet.md
   ├─ gotchas.md
   ├─ variables.md
+  ├─ secrets.md
   ├─ deploy-and-validate.md
   ├─ transformation/         ← table-input, join, aggregate, rewrite-table
   └─ orchestration/          ← start-end, sql-executor, run-transformation,
@@ -289,6 +296,8 @@ output to the converted code already in `examples/demo/databricks/`:
 - The generated **SQL / Python** source for each task (SQL by default; Python
   only where a component needs it).
 - Matillion **variables** mapped to bundle variables / Job parameters / task values.
+- Matillion **secrets** migrated to **Databricks secret scopes**, referenced at runtime
+  (never inlined or turned into variables).
 - Deployment via the Databricks CLI and a **validation checklist** (tables exist,
   row counts sane, an aggregate spot-check).
 
