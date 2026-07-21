@@ -81,9 +81,35 @@ Workspace and pointing the assistant at it:
    e.g. `/Workspace/Users/<you>/matillion-migration/`.
 2. Put the **skill** there — upload the whole folder so you have
    `matillion-migration/skill/SKILL.md` and `matillion-migration/skill/references/…`.
-   (Use **Import** → *File/Folder*, drag-and-drop, or clone it from a Git folder.)
-3. Put your **Matillion project files** in a sibling subfolder — see
-   [How to run a conversion in Genie](#how-to-run-a-conversion-in-genie) below.
+   You can drag-and-drop in the UI (**Import** → *File/Folder*), clone it from a Git
+   folder, or upload it with the Databricks CLI. **From the skill folder** (the one
+   containing `SKILL.md`):
+
+   ```bash
+   # Uploads the folder recursively into your home Workspace directory.
+   # $ME resolves to your workspace username (e.g. you@company.com).
+   ME=$(databricks current-user me -o json | jq -r .userName)
+   databricks workspace import-dir . \
+     "/Workspace/Users/$ME/matillion-migration/skill" \
+     --overwrite
+   ```
+
+   Add `-p <profile>` to any command if you use a named CLI profile. The `.md` files
+   import as plain workspace files (only notebook extensions get stripped). If you run
+   it from a full repo clone rather than a trimmed copy, build/scratch dirs
+   (`.git/`, `.databricks/`, …) upload too — harmless, but a clean copy keeps the
+   Workspace tidy.
+3. Put your **Matillion project files** in a sibling subfolder — either drag them in, or
+   upload your local export the same way:
+
+   ```bash
+   # Run from your local Matillion export (the folder with *.orch.yaml / *.tran.yaml)
+   databricks workspace import-dir . \
+     "/Workspace/Users/$ME/matillion-migration/source" \
+     --overwrite
+   ```
+
+   See [How to run a conversion in Genie](#how-to-run-a-conversion-in-genie) below.
 
 The assistant can now read `SKILL.md` and the references as context when you reference
 that path in your prompt. No skills registry required.
