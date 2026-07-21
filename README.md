@@ -73,46 +73,51 @@ means putting it somewhere your AI tool will read. Two common setups:
 
 ### Databricks Genie / Assistant
 
-Databricks' assistant has no dedicated "skills" folder — it reads the files in your
-**Workspace**. So "installing" the skill just means placing its folder in the
-Workspace and pointing the assistant at it:
+Databricks' assistant **auto-discovers** skills from a dedicated `.assistant/skills/`
+folder — each skill lives in its own subfolder named after the skill, containing
+`SKILL.md`. There are two locations
+([docs](https://docs.databricks.com/aws/en/genie-code/skills)):
 
-1. In the Databricks UI, go to **Workspace** and pick (or create) a folder to work in,
-   e.g. `/Workspace/Users/<you>/matillion-migration/`.
-2. Put the **skill** there — upload the whole folder so you have
-   `matillion-migration/skill/SKILL.md` and `matillion-migration/skill/references/…`.
-   You can drag-and-drop in the UI (**Import** → *File/Folder*), clone it from a Git
-   folder, or upload it with the Databricks CLI. **From the skill folder** (the one
-   containing `SKILL.md`):
+- **User skills** (just you): `/Users/{username}/.assistant/skills/`
+- **Workspace skills** (shared): `/Workspace/.assistant/skills/`
 
-   ```bash
-   # Uploads the folder recursively into your home Workspace directory.
-   # $ME resolves to your workspace username (e.g. you@company.com).
-   ME=$(databricks current-user me -o json | jq -r .userName)
-   databricks workspace import-dir . \
-     "/Workspace/Users/$ME/matillion-migration/skill" \
-     --overwrite
-   ```
+The subfolder name should match the skill's `name:` (`matillion-to-databricks`). So the
+target layout is:
 
-   Add `-p <profile>` to any command if you use a named CLI profile. The `.md` files
-   import as plain workspace files (only notebook extensions get stripped). If you run
-   it from a full repo clone rather than a trimmed copy, build/scratch dirs
-   (`.git/`, `.databricks/`, …) upload too — harmless, but a clean copy keeps the
-   Workspace tidy.
-3. Put your **Matillion project files** in a sibling subfolder — either drag them in, or
-   upload your local export the same way:
+```
+/Users/<you>/.assistant/skills/matillion-to-databricks/
+  ├─ SKILL.md
+  └─ references/ …
+```
 
-   ```bash
-   # Run from your local Matillion export (the folder with *.orch.yaml / *.tran.yaml)
-   databricks workspace import-dir . \
-     "/Workspace/Users/$ME/matillion-migration/source" \
-     --overwrite
-   ```
+Upload it with the Databricks CLI, **from the skill folder** (the one containing
+`SKILL.md`):
 
-   See [How to run a conversion in Genie](#how-to-run-a-conversion-in-genie) below.
+```bash
+# User-level install (only you). $ME resolves to your workspace username.
+ME=$(databricks current-user me -o json | jq -r .userName)
+databricks workspace import-dir . \
+  "/Users/$ME/.assistant/skills/matillion-to-databricks" \
+  --overwrite
+```
 
-The assistant can now read `SKILL.md` and the references as context when you reference
-that path in your prompt. No skills registry required.
+```bash
+# — or — Workspace-level install (shared with everyone in the workspace):
+databricks workspace import-dir . \
+  "/Workspace/.assistant/skills/matillion-to-databricks" \
+  --overwrite
+```
+
+Add `-p <profile>` to any command if you use a named CLI profile. Only `SKILL.md` +
+`references/` are needed; if you run from a full repo clone, build/scratch dirs
+(`.git/`, `.databricks/`, `examples/…/.databricks/`, …) upload too — harmless, but a
+trimmed copy keeps the skills folder clean. (In the UI you can instead **Import** →
+*File/Folder* into the same path.)
+
+**Genie picks it up automatically the next time you use it** (start a new chat thread
+after adding or changing a skill). Invoke it by describing a Matillion migration, or
+`@`-mention it directly — see
+[How to run a conversion in Genie](#how-to-run-a-conversion-in-genie) below.
 
 ### Claude Code
 
@@ -148,50 +153,45 @@ should see **matillion-to-databricks** in the list.
 
 ## How to run a conversion in Genie
 
-The assistant works from files in your Workspace, so the flow is: **place the files,
-then prompt.**
+Once the skill is installed under `.assistant/skills/matillion-to-databricks/` (above),
+the flow is: **upload your Matillion files, start a fresh chat, then prompt.**
 
-1. **Place your Matillion project in the Workspace.** Create a folder for the source
-   pipelines next to the skill (from the install step), and upload every `*.orch.yaml`
-   and `*.tran.yaml` you want to migrate — keep the original folder structure so nested
-   `run-orchestration` / `run-transformation` references still resolve. For example:
+1. **Put your Matillion project somewhere in the Workspace** the assistant can read —
+   e.g. `/Workspace/Users/<you>/matillion-migration/source/`. Upload every `*.orch.yaml`
+   and `*.tran.yaml` you want to migrate, keeping the original folder structure so nested
+   `run-orchestration` / `run-transformation` references still resolve:
 
+   ```bash
+   # From your local Matillion export (the folder with *.orch.yaml / *.tran.yaml)
+   ME=$(databricks current-user me -o json | jq -r .userName)
+   databricks workspace import-dir . \
+     "/Workspace/Users/$ME/matillion-migration/source" \
+     --overwrite
    ```
-   /Workspace/Users/<you>/matillion-migration/
-     ├─ skill/                      ← SKILL.md + references/ (this repo)
-     ├─ source/                     ← your Matillion export goes here
-     │    ├─ daily_load.orch.yaml
-     │    └─ transforms/…​.tran.yaml
-     └─ output/                     ← (created by the conversion)
-   ```
 
-2. **Open the assistant** (the Assistant panel in a notebook, or Genie) and give it a
-   prompt that (a) points at the skill, (b) points at your source folder, and (c) says
-   where to write the result. A prompt you can copy and edit:
+2. **Start a new chat** (skills are picked up when a thread starts) and prompt. Because
+   the skill is auto-discovered you don't have to point at its path — just describe the
+   task, or `@`-mention it. A prompt you can copy and edit:
 
-   > **Use the migration skill in `/Workspace/Users/<you>/matillion-migration/skill/`
-   > (read `SKILL.md` and the `references/` docs, and follow that workflow) to migrate
-   > the Matillion pipelines in `/Workspace/Users/<you>/matillion-migration/source/`
-   > to Databricks. Write the resulting Databricks Asset Bundle (a Job per
-   > orchestration pipeline, with SQL/notebook tasks — and a Lakeflow pipeline only
-   > where one is actually needed) into
-   > `/Workspace/Users/<you>/matillion-migration/output/`. Before writing any code,
-   > follow the skill's decision ladder and gotchas, and ask me for the real Unity
-   > Catalog `catalog.schema` to replace any Matillion `[Environment Default]`
-   > placeholders.**
+   > **@matillion-to-databricks — migrate the Matillion pipelines in
+   > `/Workspace/Users/<you>/matillion-migration/source/` to Databricks, and write the
+   > resulting Databricks Asset Bundle into
+   > `/Workspace/Users/<you>/matillion-migration/output/`. Follow the skill's decision
+   > ladder and gotchas, and ask me for the real Unity Catalog `catalog.schema` to
+   > replace any Matillion `[Environment Default]` placeholders before writing code.**
 
 3. **Answer the placeholder question.** The skill will ask for a real Unity Catalog
    namespace (Matillion `[Environment Default]` has no Databricks equivalent) — give it
-   `catalog.schema` you have write access to.
+   a `catalog.schema` you have write access to.
 
 4. **Deploy & validate.** Once the bundle is generated, ask it to deploy: *"deploy this
    bundle to my workspace and run the validation checklist."* On Databricks it uses the
    CLI/bundle tooling; you need a Unity Catalog workspace and permission to create the
    Job (and pipeline, if one was emitted). See `references/deploy-and-validate.md`.
 
-> **Tip:** if the assistant doesn't seem to be reading the skill, paste the contents of
-> `SKILL.md` directly into the conversation (or open it in the editor first) so it's in
-> context, then repeat the prompt.
+> **Tip:** if the assistant doesn't seem to be using the skill, confirm it's under
+> `.assistant/skills/matillion-to-databricks/` with `SKILL.md` at the top, and start a
+> **new** chat thread (skill changes only take effect in a fresh thread).
 
 ---
 
