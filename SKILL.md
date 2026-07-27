@@ -23,7 +23,7 @@ Consult the component reference (below) **before** translating each component, n
 Migrating a Matillion project is two nested decisions, in order:
 
 1. **The shell — always a Databricks Job.** The orchestration pipeline's control flow (ordering, branching, retries, schedules, parameters) becomes the Job's task graph. This is not a judgment call: control flow can only live in a Job.
-2. **The task type — how each step/transformation runs *inside* the Job** (SQL task, notebook task, or Lakeflow pipeline task). Pick per task using the ladder below. This is where the real judgment.
+2. **The task type — how each step/transformation runs *inside* the Job** (SQL task, notebook task, or Lakeflow pipeline task). Pick per task using the ladder below. This is where the real judgment is, and the default is **not** Lakeflow.
 
 ### Decision 1: orchestration → Job (the outer shell)
 

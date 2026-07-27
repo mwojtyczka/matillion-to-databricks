@@ -63,22 +63,36 @@ The check-authoring detail belongs to the DQX skills; here is only the migration
     base_parameters:
       catalog: ${var.catalog}
       schema: ${var.schema}
+      checks_path: ${workspace.file_path}/src/dq/sales_summary.checks.yml
 ```
 
+This is a **Databricks notebook-source** `.py` file — the first line must be the
+`# Databricks notebook source` magic marker, and `%pip` / other magics go on
+`# MAGIC` lines. Without both, the file isn't recognized as a notebook and the
+task fails to parse. Pass the checks-file location as a fourth widget so nothing
+in the body is a non-resolving literal:
+
 ```python
-# src/dq/dq_sales_summary.py — see the dqx-apply-checks / dqx-storage skills for the full API
-%pip install databricks-labs-dqx
+# Databricks notebook source
+# MAGIC %pip install databricks-labs-dqx
+
+# COMMAND ----------
+
 from databricks.labs.dqx.engine import DQEngine
 from databricks.labs.dqx.config import WorkspaceFileChecksStorageConfig
 from databricks.sdk import WorkspaceClient
 
-dbutils.widgets.text("catalog", ""); dbutils.widgets.text("schema", "")
-catalog, schema = dbutils.widgets.get("catalog"), dbutils.widgets.get("schema")
+# see the dqx-apply-checks / dqx-storage skills for the full API
+dbutils.widgets.text("catalog", "")
+dbutils.widgets.text("schema", "")
+dbutils.widgets.text("checks_path", "")   # absolute workspace path to the .checks.yml
+catalog = dbutils.widgets.get("catalog")
+schema = dbutils.widgets.get("schema")
+checks_path = dbutils.widgets.get("checks_path")
 
 dq = DQEngine(WorkspaceClient())
 # checks authored per `dqx-define-checks`, stored per `dqx-storage`
-checks = dq.load_checks(config=WorkspaceFileChecksStorageConfig(
-    location="/Workspace/.../src/dq/sales_summary.checks.yml"))
+checks = dq.load_checks(config=WorkspaceFileChecksStorageConfig(location=checks_path))
 df = spark.read.table(f"{catalog}.{schema}.sales_summary")
 valid_df, quarantine_df = dq.apply_checks_by_metadata_and_split(df, checks)
 valid_df.write.mode("overwrite").saveAsTable(f"{catalog}.{schema}.sales_summary_valid")
@@ -95,4 +109,4 @@ If a transform *independently* lands on Lakeflow (because it's incremental/strea
 - **Don't reinvent checks in SQL.** DQX has built-ins for null/empty, range, set membership, regex, referential, aggregate, uniqueness, schema, and freshness. Search `check_funcs` (via `dqx-define-checks`) before writing a custom `sql_expression`.
 - **Validate checks before the run.** `DQEngine.validate_checks(checks)` catches malformed rules without touching data — cheaper than a failed job task.
 - **Parameterize the namespace.** The DQX notebook reads `catalog`/`schema` from task parameters/widgets like every other task — never bake `main.demo` into the DQX source or the checks file.
-- **DQX is a library dependency.** Ensure `databricks-labs-dqx` is available to the task (a `%pip install databricks-labs-dqx` at the top of the notebook, or an environment/cluster library). Note this when handing off the bundle. Always pin the library to the latest version.
+- **DQX is a library dependency.** Ensure `databricks-labs-dqx` is available to the task (a `# MAGIC %pip install databricks-labs-dqx` line in the notebook, or an environment/cluster library). Note this when handing off the bundle. Pin an explicit version (e.g. `databricks-labs-dqx==<version>`) so runs are reproducible; bump it deliberately rather than tracking latest.

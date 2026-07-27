@@ -17,7 +17,11 @@ It turns Matillion's two pipeline file types into their Databricks equivalents:
 |---|---|
 | `*.orch.yaml` — orchestration pipeline (control flow) | **Databricks Job** (Workflow) — always the shell |
 | `*.tran.yaml` — transformation pipeline (dataflow) | a **task in that Job** — SQL task (default), notebook, or a Lakeflow pipeline only when incremental/streaming is needed |
-| `Assert` / reject-filter (data quality) | a **DQX** quality-gate **notebook** task (Python), placed after the checked table — split valid rows from a quarantine table |
+
+Cutting across both file types, Matillion **data-quality logic** (`Assert` components,
+reject/filter steps) migrates to a **DQX** quality-gate **notebook** task (Python),
+placed after the checked table to split valid rows from a quarantine table — see
+design principle 8 below and `references/data-quality.md`.
 
 The skill carries per-component references (joins, aggregates, SQL executors,
 nested orchestrations, variables, …), a mapping cheatsheet, a decision guide for

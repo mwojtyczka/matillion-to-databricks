@@ -41,7 +41,14 @@ These are the *pieces* of one consolidated query (CTEs / SELECT clauses), not se
 | `run-transformation` | Job SQL task (default) / notebook / pipeline task | `orchestration/run-transformation.md` |
 | `run-orchestration` | Job `run_job_task` (nested Job) | `orchestration/run-orchestration.md` |
 | `python-script` | Job notebook/SQL task | `orchestration/python-script.md` |
-| `Assert*` / reject-filter (data quality) | **DQX** notebook task (split valid/quarantine) | `data-quality.md` |
+
+## Data quality (cross-cutting)
+
+| Matillion type | Databricks | Reference |
+|---|---|---|
+| `Assert*` / reject-filter | **DQX** notebook task (split valid/quarantine) | `data-quality.md` |
+
+DQX is a PySpark library, so the quality gate is always a **notebook** task (never a SQL task), placed after the checked table. It checks a table produced by any task type, so it doesn't change the transform's own task type or force Lakeflow.
 
 ## Variables (all scopes)
 
