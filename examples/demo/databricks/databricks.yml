@@ -21,7 +21,7 @@ variables:
     description: Target schema
     default: matillion_demo
   warehouse_id:
-    description: SQL warehouse ID for the sql-executor (setup) tasks
+    description: SQL warehouse ID for all SQL tasks (setup + the transform)
     default: ""  # set to your SQL warehouse ID, e.g. via `-t dev --var warehouse_id=<id>`
 
 include:
@@ -32,8 +32,8 @@ targets:
     mode: development
     default: true
     workspace:
-      host: https://your-workspace.cloud.databricks.com
+      host: https://your-dev-workspace.cloud.databricks.com   # replace with your dev workspace URL
   prod:
     mode: production
     workspace:
-      host: https://your-workspace.cloud.databricks.com
+      host: https://your-prod-workspace.cloud.databricks.com  # replace with your prod workspace URL (must differ from dev)

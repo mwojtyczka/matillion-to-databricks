@@ -101,7 +101,7 @@ quarantine_df.write.mode("overwrite").saveAsTable(f"{catalog}.{schema}.sales_sum
 
 ## DQX inside a Lakeflow pipeline
 
-If a transform *independently* lands on Lakeflow (because it's incremental/streaming — see `references/orchestration/run-transformation.md`), you can still use DQX inside the pipeline instead of native `EXPECT` expectations — DQX gives you the same quarantine/annotation model with richer built-in checks and reusable, storable rule sets. Lakeflow expectations remain a valid option there, but **DQX is the default quality mechanism across the whole migration**, so the checks look the same whether the transform runs as a SQL task, a notebook, or a pipeline.
+If a transform *independently* lands on Lakeflow (because it's incremental/streaming — see `references/orchestration/run-transformation.md`), you can still use DQX inside the pipeline instead of native `EXPECT` expectations — DQX gives you the same quarantine/annotation model with richer built-in checks and reusable, storable rule sets. Lakeflow expectations remain a valid option there, but **DQX is the default quality mechanism across the whole migration**, so the checks look the same whether the checked table was produced by a SQL task, a notebook, or a pipeline. (The DQX code itself always runs as Python — a notebook task, or inside the pipeline — never in a SQL task.)
 
 ## Gotchas
 
