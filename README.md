@@ -16,7 +16,7 @@ It turns Matillion's two pipeline file types into their Databricks equivalents:
 | Matillion pipeline | Databricks target |
 |---|---|
 | `*.orch.yaml` — orchestration pipeline (control flow) | **Databricks Job** (Workflow) — always the shell |
-| `*.tran.yaml` — transformation pipeline (dataflow) | a **task in that Job** — SQL task (default), notebook, or a Lakeflow pipeline only when incremental/streaming or managed data-quality is needed |
+| `*.tran.yaml` — transformation pipeline (dataflow) | a **task in that Job** — SQL task (default), notebook, or a Lakeflow pipeline only when incremental/streaming is neded |
 
 The skill carries per-component references (joins, aggregates, SQL executors,
 nested orchestrations, variables, …), a mapping cheatsheet, a decision guide for
@@ -338,7 +338,7 @@ output to the converted code already in `examples/demo/databricks/`:
   becomes the **Job** (control flow — conditions, loops, failure branching, side
   effects — can only live there); (2) each transformation task picks an executor via
   the ladder **SQL task → notebook → Lakeflow** (Lakeflow only for incremental/
-  streaming or managed data-quality/lineage, not by default).
+  streaming, not by default).
 - **Placeholders need resolving.** Matillion `[Environment Default]` catalog/schema
   values have no Databricks equivalent — you'll be asked for real Unity Catalog
   names. See `references/gotchas.md`.

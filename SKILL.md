@@ -1,6 +1,6 @@
 ---
 name: matillion-to-databricks
-description: Guide for migrating Matillion ETL pipelines to Databricks. Trigger when the user wants to migrate Matillion orchestration (*.orch.yaml) and transformation (*.tran.yaml) pipelines to Databricks. Matillion orchestration pipelines become Databricks Jobs; transformation pipelines become Job tasks (SQL task for pure SQL, notebook otherwise), with Lakeflow Declarative Pipelines reserved for incremental/streaming or data-quality needs. Consult the relevant component reference before translating each component.
+description: Guide for migrating Matillion ETL pipelines to Databricks. Trigger when the user wants to migrate Matillion orchestration (*.orch.yaml) and transformation (*.tran.yaml) pipelines to Databricks. Matillion orchestration pipelines become Databricks Jobs; transformation pipelines become Job tasks (SQL task for pure SQL, notebook otherwise), with Lakeflow Declarative Pipelines reserved for incremental/streaming needs. Consult the relevant component reference before translating each component.
 ---
 
 # Matillion → Databricks Migration Guide
@@ -12,7 +12,7 @@ An end-to-end workflow for migrating Matillion ETL pipelines to Databricks.
 Matillion projects are made of two pipeline file types:
 
 - `*.orch.yaml` — **orchestration pipeline**: a control-flow DAG of steps connected by `transitions`. Becomes a **Databricks Job** — the outer shell that holds the whole migration.
-- `*.tran.yaml` — **transformation pipeline**: a dataflow DAG of components connected by `sources`. Becomes a **task inside that Job** — a SQL task for pure SQL, a notebook task otherwise, or a Lakeflow pipeline only when incremental/streaming or data-quality features are actually needed.
+- `*.tran.yaml` — **transformation pipeline**: a dataflow DAG of components connected by `sources`. Becomes a **task inside that Job** — a SQL task for pure SQL, a notebook task otherwise, or a Lakeflow pipeline only when incremental/streaming features are actually needed.
 
 Consult the component reference (below) **before** translating each component, not after something breaks.
 
@@ -35,7 +35,7 @@ For each step (and each transformation pipeline), walk this ladder **top-down an
 
 1. **Pure SQL, batch / full-refresh** → **SQL task.** The default for `sql-executor` and for any transformation that consolidates to one full-refresh query (`table-input` → `join` → `aggregate` → `rewrite-table-dl` with a single output). Cheapest, runs on the SQL warehouse, no cluster.
 2. **Imperative logic, mixed SQL + Python, or you just want a debuggable migration landing** → **notebook task** (running `spark.sql(...)`). The default for `python-script` and for transformations too tangled for one clean query. Notebooks are the pragmatic migration workhorse: faithful to imperative sources, steppable cell-by-cell, and free of declarative constraints.
-3. **Incremental / streaming / CDC, OR you want managed data-quality expectations + auto-lineage** → consider a **Lakeflow Declarative Pipeline** (pipeline task). This is the *escape hatch*, not the default. Even here, a notebook running Structured Streaming is often simpler for a first migration — reach for Lakeflow specifically when you want it to *manage* checkpoints/state, expectations, and lineage for you rather than hand-rolling them. See `references/orchestration/run-transformation.md` for the full Lakeflow-vs-task trade-off.
+3. **Incremental / streaming / CD + auto-lineage** → consider a **Lakeflow Declarative Pipeline** (pipeline task). This is the *escape hatch*, not the default. Even here, a notebook running Structured Streaming is often simpler for a first migration — reach for Lakeflow specifically when you want it to *manage* checkpoints/state, expectations, and lineage for you rather than hand-rolling them. See `references/orchestration/run-transformation.md` for the full Lakeflow-vs-task trade-off.
 
 **Why not Lakeflow by default?** A pipeline is a separate resource with its own compute lifecycle and deploy surface. It only pays off when you use what it provides — incremental maintenance, streaming, `EXPECT` rules, multi-output lineage. A single full-refresh transform uses none of that, so it's just a SQL task wearing extra machinery. Match the tool to the features you actually need.
 
@@ -109,7 +109,7 @@ For each `.tran.yaml`, walk `sources` refs from `table-input` leaves to the fina
 **Consolidate first, then pick the executor.** A linear chain that yields a single output collapses into **one query** (CTEs for the intermediate `join`/`aggregate` components) — don't emit one dataset per component. Then apply the executor ladder from "The two decisions" above:
 - pure full-refresh SQL → **SQL task** (`CREATE OR REPLACE TABLE ... AS <one SELECT>`) — the common case;
 - needs Python/imperative glue → **notebook task**;
-- genuinely needs incremental/streaming or managed data-quality/lineage → **Lakeflow pipeline** (then the consolidation rule about materialized views vs. CTEs applies — `references/transformation/rewrite-table.md`).
+- genuinely needs incremental/streaming → **Lakeflow pipeline** (then the consolidation rule about materialized views vs. CTEs applies — `references/transformation/rewrite-table.md`).
 
 Keep a component as its own dataset only when it earns it: it's **reused**, needs its own **expectations**, or is a genuine **branch point**.
 
@@ -164,7 +164,7 @@ include:
 
 Emit a DAB with:
 - one **job** resource per orchestration pipeline (`.orch.yaml`) **in its own `resources/*.yml` file**, named as agreed above, whose tasks mirror the orchestration graph: SQL tasks for `sql-executor`, a task per `run-transformation` (SQL task if the transformation is pure SQL — the common case; notebook if imperative; pipeline task only if it needs Lakeflow), a `run_job_task` for each `run-orchestration` (nested orchestration), and a notebook task for `python-script`,
-- a **pipeline** resource (its own `resources/*.yml` file) **only** for transformations that actually need Lakeflow (incremental/streaming or managed data-quality/lineage) — most migrations emit none,
+- a **pipeline** resource (its own `resources/*.yml` file) **only** for transformations that actually need Lakeflow (incremental/streaming) — most migrations emit none,
 - **bundle variables / job parameters** for the Matillion variables (see `references/variables.md`), so per-environment config and per-run inputs are parameterized rather than hardcoded,
 - **Databricks secret scopes** for every credential (see `references/secrets.md`) — referenced via `{{secrets/scope/key}}` / `dbutils.secrets.get` / a UC connection, never as a bundle variable or plaintext.
 

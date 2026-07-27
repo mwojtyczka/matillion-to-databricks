@@ -2,7 +2,7 @@
 --   matillion/sales-by-category-region.tran.yaml
 --
 -- This is pure, full-refresh SQL producing a single output table. It uses none of
--- Lakeflow's features (no incremental/streaming, no data-quality expectations, no
+-- Lakeflow's features (no incremental/streaming, no
 -- reused intermediates, single target), so per the skill's ladder it is a plain
 -- Job SQL task, not a Lakeflow pipeline. The linear component chain is consolidated
 -- into one query via CTEs; each CTE names its originating Matillion component.

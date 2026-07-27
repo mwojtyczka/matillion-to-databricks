@@ -25,7 +25,7 @@ This is the edge that stitches an orchestration to a transformation.
 
 2. **Needs Python / imperative glue, or is too tangled for one clean query** → **notebook task** running `spark.sql(...)`.
 
-3. **Genuinely needs incremental/streaming, CDC, managed data-quality expectations, or multi-output lineage** → **Lakeflow pipeline** (pipeline task). The escape hatch, not the default.
+3. **Genuinely needs incremental/streaming, CDC, or multi-output lineage** → **Lakeflow pipeline** (pipeline task). The escape hatch, not the default.
 
    ```yaml
    - task_key: run_transformation
@@ -37,7 +37,7 @@ This is the edge that stitches an orchestration to a transformation.
 
 ## Why Lakeflow is not the default
 
-A Lakeflow pipeline is a separate resource with its own compute lifecycle and deploy surface. It pays off only when you use what it provides: incremental MV maintenance (enzyme), streaming tables, `EXPECT` data-quality rules, and automatic multi-table lineage. A single full-refresh transform uses **none** of those — wrapping it in a pipeline is a SQL task plus overhead. Match the tool to the features you actually need:
+A Lakeflow pipeline is a separate resource with its own compute lifecycle and deploy surface. It pays off only when you use what it provides: incremental MV maintenance (enzyme), streaming tables, and automatic multi-table lineage. A single full-refresh transform uses **none** of those — wrapping it in a pipeline is a SQL task plus overhead. Match the tool to the features you actually need:
 
 | Signal in the `.tran.yaml` | Executor |
 |---|---|

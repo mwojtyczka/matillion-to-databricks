@@ -6,7 +6,7 @@
 2. **Executor per task — the ladder** (default is *not* Lakeflow):
    1. Pure SQL, full-refresh → **SQL task**
    2. Imperative / Python / mixed, or a debuggable migration landing → **notebook task**
-   3. Incremental/streaming or managed data-quality + lineage → **Lakeflow pipeline** (escape hatch)
+   3. Incremental/streaming + lineage → **Lakeflow pipeline** (escape hatch)
 
 Anything that branches (`success`/`failure`, `If`), loops (iterators), nests (`run-orchestration`), or has side effects (DDL, API, `python-script`) **must** be a Job task — Lakeflow can't express it. **Keep one task per Matillion step** — choose the executor, don't collapse the graph. Full rationale in `SKILL.md` → "The two decisions of every migration".
 

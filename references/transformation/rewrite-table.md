@@ -46,7 +46,7 @@ GROUP BY category, region_name;
 
 **Keep a component as its own materialized view only when it earns it:**
 - it is **reused** — more than one downstream dataset reads it (materialize once, not per-consumer),
-- it needs its own **data-quality expectations** (`EXPECT`) or independent monitoring, or
+- it needs independent monitoring, or
 - it is a genuine **branch/fan-out point** in the DAG (not a link in a linear chain).
 
 **Middle ground — lineage without the storage cost:** declare the intermediates as non-materialized `VIEW`s (`CREATE OR REFRESH VIEW`) and materialize only the target. You keep per-step nodes in the pipeline graph and can inspect them, but Lakeflow doesn't persist them.

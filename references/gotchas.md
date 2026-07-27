@@ -73,7 +73,7 @@ A pipeline that reads a variable breaks if the variable has nowhere to resolve. 
 
 ## Don't over-materialize the transformation chain
 
-Mapping every Matillion transformation component to its own `CREATE OR REFRESH MATERIALIZED VIEW` is faithful but wasteful: each intermediate becomes a storage-backed table Lakeflow recomputes every refresh. For a linear chain producing a single output, **consolidate into one MV with CTEs** — same result, one object instead of N. Keep a separate dataset only when it's reused, branches, or needs its own data-quality expectations. See `references/transformation/rewrite-table.md`.
+Mapping every Matillion transformation component to its own `CREATE OR REFRESH MATERIALIZED VIEW` is faithful but wasteful: each intermediate becomes a storage-backed table Lakeflow recomputes every refresh. For a linear chain producing a single output, **consolidate into one MV with CTEs** — same result, one object instead of N. Keep a separate dataset only when it's reused, branches. See `references/transformation/rewrite-table.md`.
 
 ## Orphaned datasets after consolidation / renaming
 
