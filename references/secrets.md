@@ -56,7 +56,7 @@ databricks secrets put-secret matillion_migration api_token
 
 ## Step 3 — Reference secrets at runtime (never inline)
 
-How you read a secret depends on the executor (per the skill's ladder):
+How you read a secret depends on the task type (per the skill's ladder):
 
 **Notebook / Python task** — `dbutils.secrets.get`:
 ```python

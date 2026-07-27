@@ -83,6 +83,10 @@ Lakeflow does **not** drop a table when you remove or rename its defining query 
 
 Credentials in the Matillion project (connection passwords, API tokens, storage keys, or values sourced from a cloud secret manager) migrate to **Databricks secret scopes**, referenced at runtime via `{{secrets/scope/key}}` / `dbutils.secrets.get` / a UC connection. **Never** map a secret to a bundle variable (`${var.x}`) or job parameter — those are plaintext and show up in the UI, `bundle summary`, and run logs. Never write a secret into a source file or the migration notes; if an export contains a plaintext credential, rotate it. Grant the run-as principal `READ` on the scope before the first run. See `references/secrets.md`.
 
+## Data quality goes to DQX, not Lakeflow or a `WHERE`
+
+`Assert` components and reject/filter logic are data-quality gates. They migrate to **DQX** (the Databricks data quality framework). DQX is a PySpark library, so it runs as a **notebook** task (Python) — or inside a Lakeflow pipeline — never a plain SQL task; but it checks a table produced by *any* task type, so it stays decoupled from the transform's own task type. Two mistakes to avoid: (1) don't reach for a **Lakeflow pipeline** "because there are expectations" — DQX doesn't need one, so pick the transform's task type on its own merits; (2) don't translate a reject-filter into a silent `WHERE` that drops rows — use an `error`-criticality DQX check that **quarantines** them, so failures are auditable. See `references/data-quality.md`. Ensure `databricks-labs-dqx` is installed for the DQX task (a `%pip install` at the top of the notebook, or a cluster/environment library).
+
 ## Nested orchestrations (`run-orchestration`)
 
 An orchestration pipeline can call another orchestration pipeline (`run-orchestration`, the shared-job pattern) — distinct from `run-transformation`. It maps to a `run_job_task` (nested Databricks Job), not a pipeline task. Deeply nested chains may hit Databricks' nested-job depth limits; inline (flatten) when the child isn't genuinely reused across parents. See `references/orchestration/run-orchestration.md`.

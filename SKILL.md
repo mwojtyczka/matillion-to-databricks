@@ -23,21 +23,23 @@ Consult the component reference (below) **before** translating each component, n
 Migrating a Matillion project is two nested decisions, in order:
 
 1. **The shell — always a Databricks Job.** The orchestration pipeline's control flow (ordering, branching, retries, schedules, parameters) becomes the Job's task graph. This is not a judgment call: control flow can only live in a Job.
-2. **The executor — how each step/transformation runs *inside* the Job.** Pick per task using the ladder below. This is where the real judgment is, and the default is **not** Lakeflow.
+2. **The task type — how each step/transformation runs *inside* the Job** (SQL task, notebook task, or Lakeflow pipeline task). Pick per task using the ladder below. This is where the real judgment.
 
 ### Decision 1: orchestration → Job (the outer shell)
 
 A **Databricks Job (Workflow)** is an *imperative task orchestrator*: it decides **what runs, in what order, and under what conditions**. Every Matillion `transitions` edge becomes a task dependency; branches/loops/nesting become `run_if` / `for_each` / `run_job_task`. The Job is the outer shell that holds the entire migration — nothing below replaces it.
 
-### Decision 2: pick the executor for each task (the ladder)
+### Decision 2: pick the task type for each step (the ladder)
 
 For each step (and each transformation pipeline), walk this ladder **top-down and stop at the first match**. The bias is toward the simplest, most debuggable, warehouse-native option — reserve Lakeflow for when its managed features actually earn their cost.
 
 1. **Pure SQL, batch / full-refresh** → **SQL task.** The default for `sql-executor` and for any transformation that consolidates to one full-refresh query (`table-input` → `join` → `aggregate` → `rewrite-table-dl` with a single output). Cheapest, runs on the SQL warehouse, no cluster.
 2. **Imperative logic, mixed SQL + Python, or you just want a debuggable migration landing** → **notebook task** (running `spark.sql(...)`). The default for `python-script` and for transformations too tangled for one clean query. Notebooks are the pragmatic migration workhorse: faithful to imperative sources, steppable cell-by-cell, and free of declarative constraints.
-3. **Incremental / streaming / CD + auto-lineage** → consider a **Lakeflow Declarative Pipeline** (pipeline task). This is the *escape hatch*, not the default. Even here, a notebook running Structured Streaming is often simpler for a first migration — reach for Lakeflow specifically when you want it to *manage* checkpoints/state, expectations, and lineage for you rather than hand-rolling them. See `references/orchestration/run-transformation.md` for the full Lakeflow-vs-task trade-off.
+3. **Incremental / streaming / CDC, or multi-output auto-lineage** → consider a **Lakeflow Declarative Pipeline** (pipeline task). This is the *escape hatch*, not the default. Even here, a notebook running Structured Streaming is often simpler for a first migration — reach for Lakeflow specifically when you want it to *manage* checkpoints/state and lineage for you rather than hand-rolling them. See `references/orchestration/run-transformation.md` for the full Lakeflow-vs-task trade-off.
 
-**Why not Lakeflow by default?** A pipeline is a separate resource with its own compute lifecycle and deploy surface. It only pays off when you use what it provides — incremental maintenance, streaming, `EXPECT` rules, multi-output lineage. A single full-refresh transform uses none of that, so it's just a SQL task wearing extra machinery. Match the tool to the features you actually need.
+**Why not Lakeflow by default?** A pipeline is a separate resource with its own compute lifecycle and deploy surface. It only pays off when you use what it provides — incremental maintenance, streaming, multi-output lineage. A single full-refresh transform uses none of that, so it's just a SQL task wearing extra machinery. Match the tool to the features you actually need.
+
+**Data quality is *not* on this ladder.** Quality enforcement (Matillion `Assert` components, reject/filter logic) migrates to **DQX** — the Databricks data quality framework. DQX is a PySpark library, so it needs **Python execution: a notebook task** (or inside a Lakeflow pipeline) — it can't run in a plain SQL task. But it can check a table produced by *any* task type, so it stays **decoupled from the transform's own task type**: pick that on its own merits (even a SQL task), then add a separate DQX **notebook** quality-gate task after it. So "this transform needs data-quality checks" is never a reason to promote the transform itself to Lakeflow. See `references/data-quality.md`.
 
 ### The capability boundary (what still *forces* a Job task)
 
@@ -54,19 +56,20 @@ Independently of the ladder, if a Matillion step needs any of the following it *
 
 ### How it composes
 
-The Job is the outer shell; each step is a task, executor chosen by the ladder:
+The Job is the outer shell; each step is a task, task type chosen by the ladder:
 
 ```
 Databricks Job (from the orchestration pipeline)
 ├─ task: seed/DDL            (sql-executor        → SQL task)
-├─ task: run transformation  (run-transformation  → SQL task if pure SQL; else notebook; Lakeflow only if incremental/streaming/DQ)
+├─ task: run transformation  (run-transformation  → SQL task if pure SQL; else notebook; Lakeflow only if incremental/streaming)
+├─ task: data-quality gate   (Assert / reject     → DQX notebook task, after the table it checks)
 ├─ task: nested orchestration(run-orchestration   → run_job_task)
 └─ task: post-process        (python-script       → notebook task, run_if success)
 ```
 
-**Preserve the task graph — don't collapse control flow.** Choosing executors is orthogonal to the graph's shape. It's tempting to fold everything into one big notebook, but that discards the per-task observability, granular retry/repair-run, and parallelism that *are* the orchestration. Keep one task per Matillion step; only choose *how* each runs.
+**Preserve the task graph — don't collapse control flow.** Choosing task types is orthogonal to the graph's shape. It's tempting to fold everything into one big notebook, but that discards the per-task observability, granular retry/repair-run, and parallelism that *are* the orchestration. Keep one task per Matillion step; only choose *how* each runs.
 
-When unsure about the shell-vs-executor split, ask: *"Is this deciding what-runs-when (→ the Job's graph), or is it the work a single task does (→ pick an executor)?"*
+When unsure about the shell-vs-task-type split, ask: *"Is this deciding what-runs-when (→ the Job's graph), or is it the work a single task does (→ pick a task type)?"*
 
 ---
 
@@ -99,6 +102,7 @@ See:
 | `run-transformation` | `references/orchestration/run-transformation.md` |
 | `run-orchestration` | `references/orchestration/run-orchestration.md` |
 | `python-script` | `references/orchestration/python-script.md` |
+| `Assert` / reject-filter (data quality) | `references/data-quality.md` |
 | variables (all scopes) | `references/variables.md` |
 | secrets / credentials | `references/secrets.md` |
 
@@ -106,12 +110,14 @@ See:
 
 For each `.tran.yaml`, walk `sources` refs from `table-input` leaves to the final `rewrite-table-dl`. This dataflow DAG describes one (or a few) output tables and how to compute them.
 
-**Consolidate first, then pick the executor.** A linear chain that yields a single output collapses into **one query** (CTEs for the intermediate `join`/`aggregate` components) — don't emit one dataset per component. Then apply the executor ladder from "The two decisions" above:
+**Consolidate first, then pick the task type.** A linear chain that yields a single output collapses into **one query** (CTEs for the intermediate `join`/`aggregate` components) — don't emit one dataset per component. Then apply the task-type ladder from "The two decisions" above:
 - pure full-refresh SQL → **SQL task** (`CREATE OR REPLACE TABLE ... AS <one SELECT>`) — the common case;
 - needs Python/imperative glue → **notebook task**;
 - genuinely needs incremental/streaming → **Lakeflow pipeline** (then the consolidation rule about materialized views vs. CTEs applies — `references/transformation/rewrite-table.md`).
 
-Keep a component as its own dataset only when it earns it: it's **reused**, needs its own **expectations**, or is a genuine **branch point**.
+Keep a component as its own dataset only when it earns it: it's **reused**, needs independent **monitoring**, or is a genuine **branch point**.
+
+**Watch for data-quality logic while parsing.** `Assert` components, and `filter`/`WHERE` steps that exist to reject bad rows, are quality gates — they migrate to **DQX** (a separate quality-gate task), not into the transform query. Note them here and translate them per `references/data-quality.md`; don't silently fold a reject-filter into the `SELECT`.
 
 See:
 
@@ -126,9 +132,9 @@ Quick lookup for every type: `references/mapping-cheatsheet.md`.
 
 ## Step 4 — Map each component
 
-For every component in every file, open its reference and translate it. Default to **SQL** (`CREATE OR REPLACE TABLE ... AS SELECT` for a SQL task, or `CREATE OR REFRESH MATERIALIZED VIEW` inside a Lakeflow pipeline); use **PySpark in a notebook** where SQL can't express it or the source is imperative. Choose the executor per the ladder in "The two decisions".
+For every component in every file, open its reference and translate it. Default to **SQL** (`CREATE OR REPLACE TABLE ... AS SELECT` for a SQL task, or `CREATE OR REFRESH MATERIALIZED VIEW` inside a Lakeflow pipeline); use **PySpark in a notebook** where SQL can't express it or the source is imperative. Choose the task type per the ladder in "The two decisions".
 
-Before writing any code, read `references/gotchas.md` — it lists the mistakes that waste the most time (unresolved `[Environment Default]` placeholders, seed data mistaken for transforms, Matillion-runtime Python APIs). If the project uses any credentials, also read `references/secrets.md` — secrets go in Databricks secret scopes and are referenced at runtime, never inlined or turned into bundle variables.
+Before writing any code, read `references/gotchas.md` — it lists the mistakes that waste the most time (unresolved `[Environment Default]` placeholders, seed data mistaken for transforms, Matillion-runtime Python APIs). If the project uses any credentials, also read `references/secrets.md` — secrets go in Databricks secret scopes and are referenced at runtime, never inlined or turned into bundle variables. If it has `Assert` components or reject/filter logic (or the user wants quality gates), read `references/data-quality.md` — these become DQX quality-gate tasks; use the DQX skills (`dqx-define-checks`, `dqx-apply-checks`, `dqx-end-to-end`) for the check syntax rather than hand-writing SQL assertions.
 
 **Surface every hardcoded value and let the user choose its target.** Don't silently carry a literal across. For each one, classify it and propose a target — **secret** (credentials), **bundle variable** (per-environment config), **job parameter** (per-run input), or **leave inline** (true constants) — explain why, and confirm before wiring. Present the findings as a table (redact secret values). Full triage: `references/hardcoded-values.md`.
 
@@ -154,7 +160,10 @@ Confirm these interactively (propose defaults where one is genuinely sensible, e
 │  └─ <pipeline>.pipeline.yml   # only if a transformation needs Lakeflow
 └─ src/
    ├─ setup/*.sql          # sql-executor + SQL-task transformations
-   └─ notebooks/*.py       # python-script / notebook tasks
+   ├─ notebooks/*.py       # python-script / notebook tasks
+   └─ dq/                  # only if the project has data-quality gates
+      ├─ *.checks.yml      # DQX check definitions (metadata form)
+      └─ dq_*.py           # DQX notebook tasks (apply checks, split valid/quarantine)
 ```
 ```yaml
 # databricks.yml
@@ -165,6 +174,7 @@ include:
 Emit a DAB with:
 - one **job** resource per orchestration pipeline (`.orch.yaml`) **in its own `resources/*.yml` file**, named as agreed above, whose tasks mirror the orchestration graph: SQL tasks for `sql-executor`, a task per `run-transformation` (SQL task if the transformation is pure SQL — the common case; notebook if imperative; pipeline task only if it needs Lakeflow), a `run_job_task` for each `run-orchestration` (nested orchestration), and a notebook task for `python-script`,
 - a **pipeline** resource (its own `resources/*.yml` file) **only** for transformations that actually need Lakeflow (incremental/streaming) — most migrations emit none,
+- a **DQX notebook task** (with its `*.checks.yml`) for each data-quality gate — placed right after the task that produces the checked table, splitting valid rows from a quarantine table (see `references/data-quality.md`); emit none if the project has no `Assert`/reject logic and the user asks for no quality gates,
 - **bundle variables / job parameters** for the Matillion variables (see `references/variables.md`), so per-environment config and per-run inputs are parameterized rather than hardcoded,
 - **Databricks secret scopes** for every credential (see `references/secrets.md`) — referenced via `{{secrets/scope/key}}` / `dbutils.secrets.get` / a UC connection, never as a bundle variable or plaintext.
 

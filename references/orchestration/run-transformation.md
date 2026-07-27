@@ -7,7 +7,7 @@ Invokes a transformation pipeline. Key parameter:
 
 This is the edge that stitches an orchestration to a transformation.
 
-## Databricks equivalent — pick the executor (ladder)
+## Databricks equivalent — pick the task type (ladder)
 
 `run-transformation` becomes a **task in the Job**, with `depends_on` mirroring the incoming `transitions`. The transformation is *dataflow*, so it never itself carries control flow — but it does **not** default to a Lakeflow pipeline. Walk this ladder top-down and stop at the first match:
 
@@ -39,22 +39,24 @@ This is the edge that stitches an orchestration to a transformation.
 
 A Lakeflow pipeline is a separate resource with its own compute lifecycle and deploy surface. It pays off only when you use what it provides: incremental MV maintenance (enzyme), streaming tables, and automatic multi-table lineage. A single full-refresh transform uses **none** of those — wrapping it in a pipeline is a SQL task plus overhead. Match the tool to the features you actually need:
 
-| Signal in the `.tran.yaml` | Executor |
+| Signal in the `.tran.yaml` | Task type |
 |---|---|
-| Full read (`offsetType: "None"`), single output, no expectations | **SQL task** |
+| Full read (`offsetType: "None"`), single output | **SQL task** |
 | Imperative logic / Python / external calls mixed in | **notebook task** |
 | Append-only/CDC source you want processed incrementally | **Lakeflow** (or notebook Structured Streaming) |
-| Want managed checkpoints + expectations + lineage | **Lakeflow** |
+| Want managed checkpoints + multi-table lineage | **Lakeflow** |
 
-Even for streaming, a notebook running Structured Streaming is often simpler for a first migration; choose Lakeflow specifically when you want it to *manage* the streaming state/quality/lineage for you.
+Even for streaming, a notebook running Structured Streaming is often simpler for a first migration; choose Lakeflow specifically when you want it to *manage* the streaming state/lineage for you.
+
+**Data quality does not belong in this table.** If the transformation validates or rejects rows, that is a **DQX** quality-gate task added *after* the transform's output table — independent of which task type you pick here. It is never a reason to choose Lakeflow. See `references/data-quality.md`.
 
 ## Worked example (from matillion-migration-demo.orch.yaml)
 
-`Run Transformation` has `transformationJob: "sales-by-category-region.tran.yaml"` and runs after `Generate Fact Data` (`success`). That transformation is a linear chain producing one full-refresh table with no expectations — so the reference bundle (`examples/demo/databricks/`) implements it as a **SQL task** (`src/setup/03_sales_by_category_region.sql`), not a Lakeflow pipeline. Its `depends_on` is `generate_fact_data`.
+`Run Transformation` has `transformationJob: "sales-by-category-region.tran.yaml"` and runs after `Generate Fact Data` (`success`). That transformation is a linear chain producing one full-refresh table with no quality gates — so the reference bundle (`examples/demo/databricks/`) implements it as a **SQL task** (`src/setup/03_sales_by_category_region.sql`), not a Lakeflow pipeline. Its `depends_on` is `generate_fact_data`. (Had the pipeline `Assert`ed on that output, a DQX task would follow it — still a SQL task for the transform itself. See `references/data-quality.md`.)
 
 ## Gotchas
 
 - The transformation's source tables must exist before this task runs — ensure the seeding `sql-executor` tasks are upstream in `depends_on`.
 - `setScalarVariables` / `setGridVariables` (if populated) become job parameters (SQL/notebook task) or pipeline configuration (Lakeflow).
 - Don't reflexively emit a pipeline resource "because it's a transformation." Emit one only when the ladder lands on Lakeflow — most migrations emit none.
-- Whatever the executor, keep it as its **own task** in the Job graph — don't fold the transform into an upstream task and lose per-step retry/observability.
+- Whatever the task type, keep it as its **own task** in the Job graph — don't fold the transform into an upstream task and lose per-step retry/observability.

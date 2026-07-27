@@ -3,12 +3,14 @@
 ## The two decisions
 
 1. **Shell — always a Job.** The orchestration pipeline's control flow becomes the Job's task graph. Not a judgment call.
-2. **Executor per task — the ladder** (default is *not* Lakeflow):
+2. **Task type per step — the ladder** (default is *not* Lakeflow):
    1. Pure SQL, full-refresh → **SQL task**
    2. Imperative / Python / mixed, or a debuggable migration landing → **notebook task**
    3. Incremental/streaming + lineage → **Lakeflow pipeline** (escape hatch)
 
-Anything that branches (`success`/`failure`, `If`), loops (iterators), nests (`run-orchestration`), or has side effects (DDL, API, `python-script`) **must** be a Job task — Lakeflow can't express it. **Keep one task per Matillion step** — choose the executor, don't collapse the graph. Full rationale in `SKILL.md` → "The two decisions of every migration".
+Data quality is **off the ladder** — `Assert`/reject logic → a **DQX notebook** quality-gate task (DQX is a PySpark library; needs Python, not a SQL task) placed after the checked table. It checks a table from any task type, so it never dictates the transform's task type or forces Lakeflow. See `data-quality.md`.
+
+Anything that branches (`success`/`failure`, `If`), loops (iterators), nests (`run-orchestration`), or has side effects (DDL, API, `python-script`) **must** be a Job task — Lakeflow can't express it. **Keep one task per Matillion step** — choose the task type, don't collapse the graph. Full rationale in `SKILL.md` → "The two decisions of every migration".
 
 ## Pipeline types
 
@@ -39,6 +41,7 @@ These are the *pieces* of one consolidated query (CTEs / SELECT clauses), not se
 | `run-transformation` | Job SQL task (default) / notebook / pipeline task | `orchestration/run-transformation.md` |
 | `run-orchestration` | Job `run_job_task` (nested Job) | `orchestration/run-orchestration.md` |
 | `python-script` | Job notebook/SQL task | `orchestration/python-script.md` |
+| `Assert*` / reject-filter (data quality) | **DQX** notebook task (split valid/quarantine) | `data-quality.md` |
 
 ## Variables (all scopes)
 
@@ -72,7 +75,7 @@ Don't carry any literal across blindly. Sweep every component param + inline SQL
 
 ## Default choices
 
-- Executor per transformation: **SQL task** (default) → **notebook** (imperative) → **Lakeflow** (incremental/streaming or managed DQ+lineage only). Python only when SQL can't express it.
-- **Consolidate the transformation chain**: a linear chain producing one output → **one query with CTEs**, not one dataset per component. Target is `CREATE OR REPLACE TABLE ... AS` (SQL task) or `CREATE OR REFRESH MATERIALIZED VIEW` (if Lakeflow). Full-overwrite (`rewrite-table-dl`) = full refresh; append-only incremental → streaming table (Lakeflow). Give a component its own dataset only if it's reused, branches, or needs expectations. See `transformation/rewrite-table.md`.
-- **Keep one task per Matillion step** — choose the executor, don't collapse the Job graph into a single task.
+- Task type per transformation: **SQL task** (default) → **notebook** (imperative) → **Lakeflow** (incremental/streaming or multi-table lineage only). Python only when SQL can't express it. Data quality is separate — a **DQX notebook** task (Python) checking the output table (`data-quality.md`).
+- **Consolidate the transformation chain**: a linear chain producing one output → **one query with CTEs**, not one dataset per component. Target is `CREATE OR REPLACE TABLE ... AS` (SQL task) or `CREATE OR REFRESH MATERIALIZED VIEW` (if Lakeflow). Full-overwrite (`rewrite-table-dl`) = full refresh; append-only incremental → streaming table (Lakeflow). Give a component its own dataset only if it's reused, branches, or needs its own quality gate. See `transformation/rewrite-table.md`.
+- **Keep one task per Matillion step** — choose the task type, don't collapse the Job graph into a single task.
 - Nested orchestration: `run_job_task` when the child is reused across parents; inline the child's tasks when it's called from only one place.

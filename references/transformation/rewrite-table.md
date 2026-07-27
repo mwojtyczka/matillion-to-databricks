@@ -12,9 +12,9 @@ Writes (fully replaces) the transformation's output table. Key parameters:
 
 The transformation's **output table**. "Rewrite" = full overwrite, which maps to:
 - **SQL task (default):** `CREATE OR REPLACE TABLE catalog.schema.table AS SELECT ...`
-- **Lakeflow pipeline (only if the executor ladder lands there):** `CREATE OR REFRESH MATERIALIZED VIEW ... AS SELECT ...`, recomputed each run. Use a `STREAMING TABLE` instead only if the upstream is append-only and you want incremental processing (the sample's `offsetType: "None"` reads argue for full refresh, i.e. a plain table / MV).
+- **Lakeflow pipeline (only if the task-type ladder lands there):** `CREATE OR REFRESH MATERIALIZED VIEW ... AS SELECT ...`, recomputed each run. Use a `STREAMING TABLE` instead only if the upstream is append-only and you want incremental processing (the sample's `offsetType: "None"` reads argue for full refresh, i.e. a plain table / MV).
 
-Which one you emit is the executor decision in `references/orchestration/run-transformation.md` — most transformations are a SQL task. **Never** map "rewrite" to `INSERT INTO` (that appends).
+Which one you emit is the task-type decision in `references/orchestration/run-transformation.md` — most transformations are a SQL task. **Never** map "rewrite" to `INSERT INTO` (that appends).
 
 ## Consolidate the chain — one query, not one dataset per component
 
@@ -46,7 +46,7 @@ GROUP BY category, region_name;
 
 **Keep a component as its own materialized view only when it earns it:**
 - it is **reused** — more than one downstream dataset reads it (materialize once, not per-consumer),
-- it needs independent monitoring, or
+- it needs independent monitoring or its own quality gate (materialize it so a **DQX** task can check it — see `references/data-quality.md`), or
 - it is a genuine **branch/fan-out point** in the DAG (not a link in a linear chain).
 
 **Middle ground — lineage without the storage cost:** declare the intermediates as non-materialized `VIEW`s (`CREATE OR REFRESH VIEW`) and materialize only the target. You keep per-step nodes in the pipeline graph and can inspect them, but Lakeflow doesn't persist them.
@@ -55,7 +55,7 @@ GROUP BY category, region_name;
 
 ## Worked example (from sales-by-category-region.tran.yaml)
 
-`Write Output` writes the `Aggregate` result to `sample_sales_summary` — the transformation's single output. The chain (`Sales`/`Products`/`Regions` → `Join Products` → `Join Regions` → `Aggregate` → `Write Output`) is linear and yields just this one table, so the reference implementation (`examples/demo/databricks/src/setup/03_sales_by_category_region.sql`) consolidates it into the **single** query above rather than seven. None of the intermediates are reused or carry expectations, so materializing them separately would only add storage and refresh cost.
+`Write Output` writes the `Aggregate` result to `sample_sales_summary` — the transformation's single output. The chain (`Sales`/`Products`/`Regions` → `Join Products` → `Join Regions` → `Aggregate` → `Write Output`) is linear and yields just this one table, so the reference implementation (`examples/demo/databricks/src/setup/03_sales_by_category_region.sql`) consolidates it into the **single** query above rather than seven. None of the intermediates are reused or need their own quality gate, so materializing them separately would only add storage and refresh cost.
 
 ## Gotchas
 

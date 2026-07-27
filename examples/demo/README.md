@@ -22,7 +22,7 @@ demo/
 ```
 
 > **Note on the transformation:** this transformation is pure full-refresh SQL with a
-> single output — it uses none of Lakeflow's features (incremental/streaming, multi-output lineage). Per the skill's executor ladder it
+> single output — it uses none of Lakeflow's features (incremental/streaming, multi-output lineage). Per the skill's task-type ladder it
 > is therefore a plain **SQL task**, not a Lakeflow pipeline, so this bundle has **no
 > pipeline resource at all**. Lakeflow is the escape hatch, used only when those
 > features are actually needed.
@@ -41,7 +41,7 @@ demo/
 | `table-input` / `join` / `aggregate` / `rewrite-table-dl` | one consolidated query (CTEs) in that SQL file | Whole chain → one `CREATE OR REPLACE TABLE`, not one dataset per component |
 
 The Job is the outer shell; the transformation runs **inside** it as a task. Picking
-*which* task type (SQL here) is the executor decision the skill's ladder describes —
+*which* task type (SQL here) is the decision the skill's ladder describes —
 Lakeflow would only be used if the transformation needed incremental/streaming.
 
 ## Conversions worth noting

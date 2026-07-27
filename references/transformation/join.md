@@ -22,7 +22,7 @@ FROM sales s
 INNER JOIN products p ON `s`.`product_id` = `p`.`product_id`
 ```
 
-Chained joins (a `join` whose `sources` include another `join`) become a **CTE chain** by default — each join is one CTE feeding the next, all inside the target MV. Promote a join to its own materialized view only if it's reused, branches, or needs expectations (see `references/transformation/rewrite-table.md` → "Consolidate the chain").
+Chained joins (a `join` whose `sources` include another `join`) become a **CTE chain** by default — each join is one CTE feeding the next, all inside the target MV. Promote a join to its own materialized view only if it's reused, branches, or needs its own quality gate (see `references/transformation/rewrite-table.md` → "Consolidate the chain", and `references/data-quality.md` for DQX).
 
 ## Worked example (from sales-by-category-region.tran.yaml)
 

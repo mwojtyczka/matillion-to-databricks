@@ -3,7 +3,7 @@
 A **skill** — a self-contained pack of instructions and reference docs — that guides an
 AI agent (and you) through converting **Matillion** ETL pipelines into **Databricks**
 Jobs (with SQL / notebook tasks, and Lakeflow Declarative Pipelines where they're
-actually needed).
+actually needed), with data quality handled by DQX.
 
 It's written as plain Markdown, so it works with any AI coding tool that can read a
 project's files — **Databricks Genie / Assistant**, **Claude Code**, or other
@@ -16,11 +16,12 @@ It turns Matillion's two pipeline file types into their Databricks equivalents:
 | Matillion pipeline | Databricks target |
 |---|---|
 | `*.orch.yaml` — orchestration pipeline (control flow) | **Databricks Job** (Workflow) — always the shell |
-| `*.tran.yaml` — transformation pipeline (dataflow) | a **task in that Job** — SQL task (default), notebook, or a Lakeflow pipeline only when incremental/streaming is neded |
+| `*.tran.yaml` — transformation pipeline (dataflow) | a **task in that Job** — SQL task (default), notebook, or a Lakeflow pipeline only when incremental/streaming is needed |
+| `Assert` / reject-filter (data quality) | a **DQX** quality-gate **notebook** task (Python), placed after the checked table — split valid rows from a quarantine table |
 
 The skill carries per-component references (joins, aggregates, SQL executors,
 nested orchestrations, variables, …), a mapping cheatsheet, a decision guide for
-picking each task's executor (SQL task → notebook → Lakeflow), and a bank of
+picking each task's type (SQL task → notebook → Lakeflow), and a bank of
 hard-won gotchas.
 
 ---
@@ -35,7 +36,7 @@ them explains most of what the skill produces.
    `success`/`failure` branching, loops, retries, schedules, parameters — can only live
    in a Job. This part isn't a judgment call.
 
-2. **Prefer the simplest executor for each task: SQL task → notebook → Lakeflow.** For
+2. **Prefer the simplest task type for each step: SQL task → notebook → Lakeflow.** For
    every step/transformation, walk that ladder and stop at the first fit:
    - **SQL task** for pure, batch/full-refresh SQL (the common case) — warehouse-native,
      no cluster, cheapest.
@@ -54,7 +55,7 @@ them explains most of what the skill produces.
    chain that yields one output into a single query using CTEs.** In the demo, 7 Matillion
    components became **one** `CREATE OR REPLACE TABLE … WITH … SELECT` — identical result,
    one object instead of seven. Keep a step separate only when it's genuinely *reused*,
-   needs its own *expectations*, or is a real *branch point*.
+   needs its own *quality gate*, or is a real *branch point*.
 
 4. **Preserve the orchestration graph; don't over-consolidate control flow.** Collapsing
    *dataflow* (point 3) is good; collapsing *control flow* is not. Keep **one Job task per
@@ -83,6 +84,17 @@ them explains most of what the skill produces.
    Matillion-runtime APIs (`context.cursor()`, `subprocess`, …) are translated to their
    real payload (usually SQL via `spark.sql(...)`); the Matillion specific runtime plumbing is dropped.
 
+8. **Data quality goes to DQX, decoupled from the transform's task type.** Matillion
+   `Assert` components and reject/filter logic migrate to **DQX** (the Databricks data
+   quality framework). DQX is a PySpark library, so it runs as a **notebook** task
+   (Python) — or inside a Lakeflow pipeline — never a plain SQL task. But it can check a
+   table produced by *any* task type, so it doesn't dictate how the transform runs: pick
+   the transform's task type on its own merits (even a SQL task), then add a separate DQX
+   notebook task after it that splits valid rows from a **quarantine** table (so rejects
+   are auditable, not silently `WHERE`d away). "This transform needs quality checks"
+   therefore never forces the transform itself to Lakeflow. Check syntax comes from DQX's
+   own skills; see `references/data-quality.md`.
+
 > The full rationale lives in `SKILL.md` → *"The two decisions of every migration"* and
 > the transformation references. This list is the summary.
 
@@ -98,6 +110,7 @@ references/                  ← per-component + cross-cutting reference docs
   ├─ variables.md
   ├─ secrets.md
   ├─ hardcoded-values.md
+  ├─ data-quality.md         ← DQX quality gates (Assert / reject → DQX)
   ├─ deploy-and-validate.md
   ├─ transformation/         ← table-input, join, aggregate, rewrite-table
   └─ orchestration/          ← start-end, sql-executor, run-transformation,
@@ -324,6 +337,8 @@ output to the converted code already in `examples/demo/databricks/`:
 - Matillion **variables** mapped to bundle variables / Job parameters / task values.
 - Matillion **secrets** migrated to **Databricks secret scopes**, referenced at runtime
   (never inlined or turned into variables).
+- Matillion **data-quality gates** (`Assert` / reject logic) migrated to **DQX** tasks
+  that split valid rows from a quarantine table (only when the project has them).
 - A **validation checklist** (tables exist, row counts sane, an aggregate spot-check).
   Deployment itself is a CLI step (`databricks bundle deploy`) you run — in Claude Code
   the agent runs it for you; in Genie you run it from a machine with the CLI (see the
@@ -336,12 +351,15 @@ output to the converted code already in `examples/demo/databricks/`:
 - **Read the decision guide.** `SKILL.md` → *"The two decisions of every migration"*
   explains the two calls that most affect the result: (1) the orchestration always
   becomes the **Job** (control flow — conditions, loops, failure branching, side
-  effects — can only live there); (2) each transformation task picks an executor via
+  effects — can only live there); (2) each transformation task picks a task type via
   the ladder **SQL task → notebook → Lakeflow** (Lakeflow only for incremental/
   streaming, not by default).
 - **Placeholders need resolving.** Matillion `[Environment Default]` catalog/schema
   values have no Databricks equivalent — you'll be asked for real Unity Catalog
   names. See `references/gotchas.md`.
+- **Data quality uses DQX.** `Assert` components and reject/filter logic become DQX
+  quality-gate tasks, and the DQX task needs the
+  `databricks-labs-dqx` library. See `references/data-quality.md`.
 - **Custom `python-script` logic** that uses Matillion-runtime APIs
   (`context.cursor()`, `subprocess`, …) is translated by intent, not line-by-line —
   review it.
