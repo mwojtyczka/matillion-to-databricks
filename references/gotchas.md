@@ -47,6 +47,22 @@ databricks bundle deploy -t dev --profile <profile> --var="warehouse_id=<id>"
 
 (Or set the `warehouse_id` default in `databricks.yml`.) When an agent hands a user the deploy command, it must fill in `--var="warehouse_id=..."` (and the other config vars) from the user's answers — see `references/deploy-and-validate.md`.
 
+## `SCHEMA_NOT_FOUND` at run time = target schema was never created
+
+The bundle deploys fine, but the **first task fails at run time** with `[SCHEMA_NOT_FOUND] The schema \`<catalog>\`.\`<schema>\` cannot be found`. Matillion resolved `[Environment Default]` (or a Snowflake `database.schema`) against an environment that already had the schema; the migrated Job doesn't recreate it, so `USE SCHEMA IDENTIFIER(:schema)` fails on a fresh catalog. Have the **first setup task create the schema** before using it:
+
+```sql
+USE CATALOG IDENTIFIER(:catalog);
+CREATE SCHEMA IF NOT EXISTS IDENTIFIER(:schema);
+USE SCHEMA IDENTIFIER(:schema);
+```
+
+The **catalog** must already exist — creating catalogs needs metastore-admin rights and is out of scope for an ETL Job, so surface a missing catalog to the user rather than trying to create it. (This is easy to miss because a *re-run* against a schema a previous run created looks clean — it only bites on a genuinely fresh namespace.)
+
+## Reads assume upstream/source tables already exist
+
+A transform that reads `FROM raw_orders` (or a Snowflake `RAW.*` table) will fail with `TABLE_OR_VIEW_NOT_FOUND` if nothing produces that table. Matillion pipelines often **read source tables populated by ingestion outside the pipeline** — the migrated Job inherits that assumption. Before claiming a Job runs end-to-end, check every `FROM`/`JOIN` resolves to either a table an upstream task creates or a real pre-existing source. If the source data genuinely lives elsewhere, point the reads at it (via `catalog`/`schema` params); only seed fixture tables for a self-contained demo, and label them as such. (Both worked examples add a first `seed`/dimension task for exactly this reason.)
+
 ## Seed data in `sql-executor` is not a transformation
 
 `CREATE OR REPLACE TABLE ... INSERT INTO ... VALUES (...)` blocks are demo/fixture data. Keep them as a Job setup SQL task. Do **not** model them as Lakeflow pipeline tables — the pipeline should read them as sources, not own them.

@@ -8,8 +8,13 @@
 --
 -- catalog/schema are NOT hardcoded: they arrive as SQL task parameters (:catalog /
 -- :schema, from the bundle variables) and are applied via USE ... IDENTIFIER().
+--
+-- This first task also ensures the target schema exists so the demo runs against a
+-- fresh catalog. (The catalog itself must already exist — creating catalogs needs
+-- metastore-admin rights and is out of scope for an ETL job.)
 
 USE CATALOG IDENTIFIER(:catalog);
+CREATE SCHEMA IF NOT EXISTS IDENTIFIER(:schema);
 USE SCHEMA IDENTIFIER(:schema);
 
 CREATE OR REPLACE TABLE products_src (

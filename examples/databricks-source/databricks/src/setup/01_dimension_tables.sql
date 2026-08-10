@@ -5,8 +5,13 @@
 -- Matillion [Environment Default] is NOT hardcoded: catalog/schema arrive as SQL task
 -- parameters (:catalog / :schema, sourced from the bundle variables) and are applied via
 -- USE ... IDENTIFIER(), so tables are referenced unqualified.
+--
+-- As the first task, this also ensures the target schema exists so the Job runs against
+-- a fresh catalog. (The catalog itself must already exist — creating catalogs needs
+-- metastore-admin rights and is out of scope for an ETL job.)
 
 USE CATALOG IDENTIFIER(:catalog);
+CREATE SCHEMA IF NOT EXISTS IDENTIFIER(:schema);
 USE SCHEMA IDENTIFIER(:schema);
 
 CREATE OR REPLACE TABLE sample_products (
