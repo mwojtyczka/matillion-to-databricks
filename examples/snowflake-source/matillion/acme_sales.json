@@ -1,0 +1,1035 @@
+{
+  "dbEnvironment": "snowflake",
+  "version": "1.78.10",
+  "jobsTree": {
+    "id": 1,
+    "name": "ROOT",
+    "children": [
+      {
+        "id": 2,
+        "name": "Sales",
+        "children": [],
+        "jobs": [
+          {
+            "id": 90001,
+            "name": "Load Sales Summary",
+            "description": "Builds sales dims/facts and the region summary.",
+            "type": "ORCHESTRATION",
+            "tag": "load-sales-summary"
+          },
+          {
+            "id": 90002,
+            "name": "sales_by_region",
+            "description": "Joins fact sales to regions and aggregates revenue by region.",
+            "type": "TRANSFORMATION",
+            "tag": "sales-by-region"
+          }
+        ]
+      }
+    ],
+    "jobs": []
+  },
+  "orchestrationJobs": [
+    {
+      "id": 90001,
+      "revision": 1,
+      "created": 0,
+      "timestamp": 0,
+      "components": {
+        "1001": {
+          "id": 1001,
+          "inputCardinality": "ONE",
+          "outputCardinality": "MANY",
+          "implementationID": 444132438,
+          "x": -240,
+          "y": 0,
+          "width": 32,
+          "height": 32,
+          "inputConnectorIDs": [],
+          "outputSuccessConnectorIDs": [],
+          "outputFailureConnectorIDs": [],
+          "outputUnconditionalConnectorIDs": [
+            2001
+          ],
+          "outputTrueConnectorIDs": [],
+          "outputFalseConnectorIDs": [],
+          "parameters": {
+            "1": {
+              "slot": 1,
+              "name": "Start",
+              "elements": {},
+              "visible": true
+            }
+          },
+          "exportMappings": {},
+          "activationStatus": "ENABLED"
+        },
+        "1002": {
+          "id": 1002,
+          "inputCardinality": "ONE",
+          "outputCardinality": "MANY",
+          "implementationID": -798585337,
+          "x": -120,
+          "y": 0,
+          "width": 32,
+          "height": 32,
+          "inputConnectorIDs": [
+            2001
+          ],
+          "outputSuccessConnectorIDs": [
+            2002
+          ],
+          "outputFailureConnectorIDs": [],
+          "outputUnconditionalConnectorIDs": [],
+          "outputTrueConnectorIDs": [],
+          "outputFalseConnectorIDs": [],
+          "parameters": {
+            "1": {
+              "slot": 1,
+              "name": "Name",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "Create Dimension Tables"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "2": {
+              "slot": 2,
+              "name": "SQL Script",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "CREATE OR REPLACE TABLE ${v_e_sales_db}.SALES.DIM_PRODUCTS AS\nSELECT PRODUCT_ID::NUMBER          AS PRODUCT_ID,\n       PRODUCT_NAME,\n       IFF(CATEGORY IS NULL, 'UNKNOWN', CATEGORY) AS CATEGORY,\n       CURRENT_TIMESTAMP()         AS LOADED_AT\nFROM ${v_e_sales_db}.RAW.PRODUCTS_SRC;\n\nCREATE OR REPLACE TABLE ${v_e_sales_db}.SALES.DIM_REGIONS AS\nSELECT REGION_ID::NUMBER AS REGION_ID, REGION_NAME\nFROM ${v_e_sales_db}.RAW.REGIONS_SRC;\n\nGRANT SELECT ON ALL TABLES IN SCHEMA ${v_e_sales_db}.SALES TO ROLE REPORTING_RO;"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            }
+          },
+          "exportMappings": {},
+          "activationStatus": "ENABLED"
+        },
+        "1003": {
+          "id": 1003,
+          "inputCardinality": "ONE",
+          "outputCardinality": "MANY",
+          "implementationID": -798585337,
+          "x": 0,
+          "y": 0,
+          "width": 32,
+          "height": 32,
+          "inputConnectorIDs": [
+            2002
+          ],
+          "outputSuccessConnectorIDs": [
+            2003
+          ],
+          "outputFailureConnectorIDs": [],
+          "outputUnconditionalConnectorIDs": [],
+          "outputTrueConnectorIDs": [],
+          "outputFalseConnectorIDs": [],
+          "parameters": {
+            "1": {
+              "slot": 1,
+              "name": "Name",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "Load Fact Data"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "2": {
+              "slot": 2,
+              "name": "SQL Script",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "CREATE OR REPLACE TABLE ${v_e_sales_db}.SALES.FACT_SALES AS\nSELECT SALE_ID::NUMBER      AS SALE_ID,\n       PRODUCT_ID::NUMBER   AS PRODUCT_ID,\n       REGION_ID::NUMBER    AS REGION_ID,\n       QUANTITY::NUMBER     AS QUANTITY,\n       REVENUE::FLOAT       AS REVENUE\nFROM ${v_e_sales_db}.RAW.SALES_SRC\nQUALIFY ROW_NUMBER() OVER (PARTITION BY SALE_ID ORDER BY LOADED_AT DESC) = 1;"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            }
+          },
+          "exportMappings": {},
+          "activationStatus": "ENABLED"
+        },
+        "1004": {
+          "id": 1004,
+          "inputCardinality": "ONE",
+          "outputCardinality": "MANY",
+          "implementationID": 1896325668,
+          "x": 120,
+          "y": 0,
+          "width": 32,
+          "height": 32,
+          "inputConnectorIDs": [
+            2003
+          ],
+          "outputSuccessConnectorIDs": [
+            2004
+          ],
+          "outputFailureConnectorIDs": [],
+          "outputUnconditionalConnectorIDs": [],
+          "outputTrueConnectorIDs": [],
+          "outputFalseConnectorIDs": [],
+          "parameters": {
+            "1": {
+              "slot": 1,
+              "name": "Name",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "Run Sales By Region"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "2": {
+              "slot": 2,
+              "name": "Transformation Job",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "Sales/sales_by_region"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "3": {
+              "slot": 3,
+              "name": "",
+              "elements": {},
+              "visible": true
+            },
+            "4": {
+              "slot": 4,
+              "name": "Set Scalar Variables",
+              "elements": {},
+              "visible": true
+            },
+            "5": {
+              "slot": 5,
+              "name": "Set Grid Variables",
+              "elements": {},
+              "visible": true
+            }
+          },
+          "exportMappings": {},
+          "activationStatus": "ENABLED"
+        },
+        "1005": {
+          "id": 1005,
+          "inputCardinality": "ONE",
+          "outputCardinality": "MANY",
+          "implementationID": -1946388514,
+          "x": 240,
+          "y": 0,
+          "width": 32,
+          "height": 32,
+          "inputConnectorIDs": [
+            2004
+          ],
+          "outputSuccessConnectorIDs": [],
+          "outputFailureConnectorIDs": [],
+          "outputUnconditionalConnectorIDs": [],
+          "outputTrueConnectorIDs": [],
+          "outputFalseConnectorIDs": [],
+          "parameters": {
+            "1": {
+              "slot": 1,
+              "name": "Name",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "End Success"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            }
+          },
+          "exportMappings": {},
+          "activationStatus": "ENABLED"
+        }
+      },
+      "successConnectors": {
+        "2002": {
+          "id": 2002,
+          "sourceID": 1002,
+          "targetID": 1003
+        },
+        "2003": {
+          "id": 2003,
+          "sourceID": 1003,
+          "targetID": 1004
+        },
+        "2004": {
+          "id": 2004,
+          "sourceID": 1004,
+          "targetID": 1005
+        }
+      },
+      "failureConnectors": {},
+      "unconditionalConnectors": {
+        "2001": {
+          "id": 2001,
+          "sourceID": 1001,
+          "targetID": 1002
+        }
+      },
+      "trueConnectors": {},
+      "falseConnectors": {},
+      "iterationConnectors": {},
+      "noteConnectors": {},
+      "notes": {},
+      "variables": {},
+      "grids": {}
+    }
+  ],
+  "transformationJobs": [
+    {
+      "id": 90002,
+      "revision": 1,
+      "created": 0,
+      "timestamp": 0,
+      "components": {
+        "3001": {
+          "id": 3001,
+          "inputCardinality": "ONE",
+          "outputCardinality": "MANY",
+          "implementationID": 335239555,
+          "x": 0,
+          "y": 0,
+          "width": 32,
+          "height": 32,
+          "inputConnectorIDs": [],
+          "outputSuccessConnectorIDs": [
+            4001
+          ],
+          "outputFailureConnectorIDs": [],
+          "outputUnconditionalConnectorIDs": [],
+          "outputTrueConnectorIDs": [],
+          "outputFalseConnectorIDs": [],
+          "parameters": {
+            "1": {
+              "slot": 1,
+              "name": "Name",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "FACT_SALES"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "2": {
+              "slot": 2,
+              "name": "Target Table",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "FACT_SALES"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "6": {
+              "slot": 6,
+              "name": "Database",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "${v_e_sales_db}"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "7": {
+              "slot": 7,
+              "name": "Schema",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "SALES"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "8": {
+              "slot": 8,
+              "name": "Warehouse",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "REPORTING_WH"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "9": {
+              "slot": 9,
+              "name": "Order By",
+              "elements": {},
+              "visible": true
+            }
+          },
+          "exportMappings": {},
+          "activationStatus": "ENABLED"
+        },
+        "3002": {
+          "id": 3002,
+          "inputCardinality": "ONE",
+          "outputCardinality": "MANY",
+          "implementationID": 335239555,
+          "x": 0,
+          "y": 120,
+          "width": 32,
+          "height": 32,
+          "inputConnectorIDs": [],
+          "outputSuccessConnectorIDs": [
+            4002
+          ],
+          "outputFailureConnectorIDs": [],
+          "outputUnconditionalConnectorIDs": [],
+          "outputTrueConnectorIDs": [],
+          "outputFalseConnectorIDs": [],
+          "parameters": {
+            "1": {
+              "slot": 1,
+              "name": "Name",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "DIM_REGIONS"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "2": {
+              "slot": 2,
+              "name": "Target Table",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "DIM_REGIONS"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "6": {
+              "slot": 6,
+              "name": "Database",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "${v_e_sales_db}"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "7": {
+              "slot": 7,
+              "name": "Schema",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "SALES"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "8": {
+              "slot": 8,
+              "name": "Warehouse",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "REPORTING_WH"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "9": {
+              "slot": 9,
+              "name": "Order By",
+              "elements": {},
+              "visible": true
+            }
+          },
+          "exportMappings": {},
+          "activationStatus": "ENABLED"
+        },
+        "3003": {
+          "id": 3003,
+          "inputCardinality": "ONE",
+          "outputCardinality": "MANY",
+          "implementationID": -629958239,
+          "x": 160,
+          "y": 60,
+          "width": 32,
+          "height": 32,
+          "inputConnectorIDs": [
+            4001,
+            4002
+          ],
+          "outputSuccessConnectorIDs": [
+            4003
+          ],
+          "outputFailureConnectorIDs": [],
+          "outputUnconditionalConnectorIDs": [],
+          "outputTrueConnectorIDs": [],
+          "outputFalseConnectorIDs": [],
+          "parameters": {
+            "1": {
+              "slot": 1,
+              "name": "Name",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "Join Regions"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "2": {
+              "slot": 2,
+              "name": "Main Table",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "FACT_SALES"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "3": {
+              "slot": 3,
+              "name": "Main Table Alias",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "s"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "4": {
+              "slot": 4,
+              "name": "Joins",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "DIM_REGIONS"
+                    },
+                    "2": {
+                      "slot": 2,
+                      "type": "STRING",
+                      "value": "r"
+                    },
+                    "3": {
+                      "slot": 3,
+                      "type": "STRING",
+                      "value": "Inner"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "5": {
+              "slot": 5,
+              "name": "Join Expressions",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "\"s\".\"REGION_ID\" = \"r\".\"REGION_ID\""
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "6": {
+              "slot": 6,
+              "name": "Output Columns",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "s.SALE_ID"
+                    }
+                  }
+                },
+                "2": {
+                  "slot": 2,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "s.REVENUE"
+                    }
+                  }
+                },
+                "3": {
+                  "slot": 3,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "s.QUANTITY"
+                    }
+                  }
+                },
+                "4": {
+                  "slot": 4,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "r.REGION_NAME"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            }
+          },
+          "exportMappings": {},
+          "activationStatus": "ENABLED"
+        },
+        "3004": {
+          "id": 3004,
+          "inputCardinality": "ONE",
+          "outputCardinality": "MANY",
+          "implementationID": 1701703136,
+          "x": 320,
+          "y": 60,
+          "width": 32,
+          "height": 32,
+          "inputConnectorIDs": [
+            4003
+          ],
+          "outputSuccessConnectorIDs": [
+            4004
+          ],
+          "outputFailureConnectorIDs": [],
+          "outputUnconditionalConnectorIDs": [],
+          "outputTrueConnectorIDs": [],
+          "outputFalseConnectorIDs": [],
+          "parameters": {
+            "1": {
+              "slot": 1,
+              "name": "Name",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "Aggregate By Region"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "2": {
+              "slot": 2,
+              "name": "Groupings",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "REGION_NAME"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "3": {
+              "slot": 3,
+              "name": "Aggregations",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "REVENUE"
+                    },
+                    "2": {
+                      "slot": 2,
+                      "type": "STRING",
+                      "value": "Sum"
+                    }
+                  }
+                },
+                "2": {
+                  "slot": 2,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "SALE_ID"
+                    },
+                    "2": {
+                      "slot": 2,
+                      "type": "STRING",
+                      "value": "Count"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "4": {
+              "slot": 4,
+              "name": "Grouping Type",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "Group By"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            }
+          },
+          "exportMappings": {},
+          "activationStatus": "ENABLED"
+        },
+        "3005": {
+          "id": 3005,
+          "inputCardinality": "ONE",
+          "outputCardinality": "MANY",
+          "implementationID": 1354890871,
+          "x": 480,
+          "y": 60,
+          "width": 32,
+          "height": 32,
+          "inputConnectorIDs": [
+            4004
+          ],
+          "outputSuccessConnectorIDs": [],
+          "outputFailureConnectorIDs": [],
+          "outputUnconditionalConnectorIDs": [],
+          "outputTrueConnectorIDs": [],
+          "outputFalseConnectorIDs": [],
+          "parameters": {
+            "1": {
+              "slot": 1,
+              "name": "Name",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "SALES_BY_REGION"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "2": {
+              "slot": 2,
+              "name": "Target Table",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "SALES_BY_REGION"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "3": {
+              "slot": 3,
+              "name": "Column Names",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "REGION_NAME"
+                    }
+                  }
+                },
+                "2": {
+                  "slot": 2,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "REVENUE"
+                    }
+                  }
+                },
+                "3": {
+                  "slot": 3,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "SALE_ID"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "5": {
+              "slot": 5,
+              "name": "Schema",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "SALES"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "6": {
+              "slot": 6,
+              "name": "Database",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": "${v_e_sales_db}"
+                    }
+                  }
+                }
+              },
+              "visible": true
+            },
+            "7": {
+              "slot": 7,
+              "name": "Offset",
+              "elements": {
+                "1": {
+                  "slot": 1,
+                  "values": {
+                    "1": {
+                      "slot": 1,
+                      "type": "STRING",
+                      "value": ""
+                    }
+                  }
+                }
+              },
+              "visible": true
+            }
+          },
+          "exportMappings": {},
+          "activationStatus": "ENABLED"
+        }
+      },
+      "connectors": {
+        "4001": {
+          "id": 4001,
+          "sourceID": 3001,
+          "targetID": 3003
+        },
+        "4002": {
+          "id": 4002,
+          "sourceID": 3002,
+          "targetID": 3003
+        },
+        "4003": {
+          "id": 4003,
+          "sourceID": 3003,
+          "targetID": 3004
+        },
+        "4004": {
+          "id": 4004,
+          "sourceID": 3004,
+          "targetID": 3005
+        }
+      },
+      "noteConnectors": {},
+      "notes": {},
+      "variables": {},
+      "grids": {}
+    }
+  ],
+  "variables": [
+    {
+      "name": "v_e_sales_db",
+      "type": "TEXT",
+      "scope": "COPIED",
+      "value": "ACME_PROD",
+      "description": "Environment default Snowflake database (per-environment)."
+    }
+  ],
+  "environments": [
+    {
+      "name": "prod",
+      "database": "ACME_PROD",
+      "schema": "SALES",
+      "warehouse": "REPORTING_WH"
+    }
+  ]
+}

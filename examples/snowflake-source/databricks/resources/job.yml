@@ -1,0 +1,70 @@
+# Databricks Job built from the "Load Sales Summary" orchestration in acme_sales.json.
+#
+# The classic JSON export wires components with connector lists (successConnectors /
+# unconditionalConnectors), not inline `transitions`. Each connector's source->target
+# becomes a task dependency. The `start` and `end-success` components carry no work —
+# they are graph boundaries. Connector graph:
+#
+#   Start -> Create Dimension Tables -> Load Fact Data -> Run Sales By Region -> End Success
+#
+# Every step is a SQL task (pure full-refresh SQL, no Lakeflow features). catalog/schema
+# ride along as SQL task parameters (bound to :catalog / :schema in each .sql via
+# USE ... IDENTIFIER()), so the namespace is never hardcoded. The extra 01_seed_raw task
+# only exists to make the demo self-contained (see that file's header).
+resources:
+  jobs:
+    load_sales_summary_job:
+      name: load-sales-summary-job
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+      tasks:
+        # Demo-only: seed the RAW.* fixtures the Snowflake source assumed already existed.
+        - task_key: seed_raw
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+            file:
+              path: ../src/setup/01_seed_raw.sql
+
+        # sql-executor "Create Dimension Tables" -> SQL task
+        - task_key: dimension_tables
+          depends_on:
+            - task_key: seed_raw
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+            file:
+              path: ../src/setup/02_dimension_tables.sql
+
+        # sql-executor "Load Fact Data" -> SQL task, depends on dimension_tables
+        - task_key: fact_sales
+          depends_on:
+            - task_key: dimension_tables
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+            file:
+              path: ../src/setup/03_fact_sales.sql
+
+        # run-transformation "Run Sales By Region" -> SQL task.
+        # The transformation is pure full-refresh SQL with a single output and no
+        # Lakeflow features, so it runs as a SQL task rather than a Lakeflow pipeline.
+        - task_key: sales_by_region
+          depends_on:
+            - task_key: fact_sales
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+            file:
+              path: ../src/setup/04_sales_by_region.sql

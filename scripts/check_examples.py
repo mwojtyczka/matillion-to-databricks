@@ -6,6 +6,7 @@ into real bundles, so a broken example is a real bug. This check does NOT need a
 Databricks workspace or credentials — it only parses/compiles/lints locally:
 
   1. Every *.yml / *.yaml parses as valid YAML.
+  1b. Every examples/**/*.json parses as valid JSON (classic Matillion exports).
   2. Every notebook source under src/ compiles as Python (py_compile).
   3. Every notebook source is valid *Databricks notebook-source* format:
        - first line is `# Databricks notebook source`
@@ -15,6 +16,7 @@ Run locally with:  python3 scripts/check_examples.py
 """
 from __future__ import annotations
 
+import json
 import py_compile
 import pathlib
 import sys
@@ -40,6 +42,15 @@ def main() -> int:
             list(yaml.safe_load_all(f.read_text()))
         except yaml.YAMLError as e:
             errors.append(f"YAML parse error in {f.relative_to(ROOT)}: {e}")
+
+    # 1b) all JSON parses (classic Matillion exports under examples/**/matillion/)
+    for f in sorted(ROOT.rglob("examples/**/*.json")):
+        if _skip(f):
+            continue
+        try:
+            json.loads(f.read_text())
+        except json.JSONDecodeError as e:
+            errors.append(f"JSON parse error in {f.relative_to(ROOT)}: {e}")
 
     # 2) + 3) notebook sources under src/: compile + notebook-source lint
     for f in sorted(ROOT.rglob("src/**/*.py")):

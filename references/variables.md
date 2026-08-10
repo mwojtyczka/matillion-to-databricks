@@ -78,7 +78,7 @@ CREATE OR REPLACE TABLE my_table AS SELECT ...;   -- unqualified; lands in :cata
 ```
 
 `IDENTIFIER()` is required — a bare `:catalog` is treated as a string/column value, not an
-object name. The reference bundle (`examples/demo/databricks/`) uses exactly this for all
+object name. The repo's reference bundle (`examples/databricks-source/databricks/`) uses exactly this for all
 three SQL tasks. (Notebook tasks do the equivalent with `dbutils.widgets` + `base_parameters`.)
 
 ## Gotchas

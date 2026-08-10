@@ -1,5 +1,23 @@
 # Matillion → Databricks mapping cheatsheet
 
+## Characterize the source (two independent axes)
+
+The two decisions and the target bundle are identical regardless; these only change how you *read* and *translate* the source. They're **independent** — don't infer one from the other.
+
+**Axis 1 — export format (how you *parse*):**
+
+| Format | Looks like | How to read it |
+|---|---|---|
+| **DPC / YAML** (newer) | one file per pipeline: `*.orch.yaml` / `*.tran.yaml`, `type:` strings, `transitions` / `sources` | the default assumed throughout these references |
+| **Classic / JSON** (older) | one `.json` for the whole project: `orchestrationJobs` / `transformationJobs`, numeric `implementationID`, `connectors` lists | decode via `classic-json-format.md` |
+
+**Axis 2 — source warehouse backend (which SQL dialect you *translate*):**
+
+| Backend | Detect | SQL work |
+|---|---|---|
+| **Databricks** | `catalog`/`schema`, Spark SQL idioms | already Databricks dialect — little to do |
+| **Snowflake / Redshift / BigQuery / …** | classic JSON `dbEnvironment`; else connection config + SQL idioms | translate to Databricks SQL — `snowflake-sql.md` (Snowflake worked; same approach for others) |
+
 ## The two decisions
 
 1. **Shell — always a Job.** The orchestration pipeline's control flow becomes the Job's task graph. Not a judgment call.

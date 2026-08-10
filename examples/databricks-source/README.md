@@ -27,6 +27,44 @@ demo/
 > pipeline resource at all**. Lakeflow is the escape hatch, used only when those
 > features are actually needed.
 
+## Pipeline shape (before / after)
+
+**Before — Matillion orchestration** (`matillion-migration-demo.orch.yaml`), a control-flow
+DAG whose steps are wired by `transitions`. The `run-transformation` step calls the
+transformation pipeline (its own dataflow DAG):
+
+```mermaid
+flowchart TD
+    subgraph orch["orchestration: matillion-migration-demo.orch.yaml"]
+        S([Start]) --> DT[sql-executor<br/>Dimension Tables]
+        DT --> GF[sql-executor<br/>Generate Fact Data]
+        GF --> RT[run-transformation<br/>Run Transformation]
+        RT --> CA[python-script<br/>Create Aggregation Table]
+        CA --> E([End Success])
+    end
+    subgraph tran["transformation: sales-by-category-region.tran.yaml"]
+        TS[table-input<br/>Sales] --> JP[join<br/>Join Products]
+        TP[table-input<br/>Products] --> JP
+        JP --> JR[join<br/>Join Regions]
+        TR[table-input<br/>Regions] --> JR
+        JR --> AG[aggregate] --> WO[rewrite-table-dl<br/>Write Output]
+    end
+    RT -.calls.-> tran
+```
+
+**After — Databricks Job** (`resources/job.yml`). Each orchestration step becomes a task
+(`depends_on` mirrors the `transitions`); the whole transformation DAG collapses into the
+single SQL task `run_transformation`:
+
+```mermaid
+flowchart TD
+    subgraph job["Job: matillion_migration_demo_job"]
+        DT[SQL task<br/>dimension_tables] --> GF[SQL task<br/>generate_fact_data]
+        GF --> RT[SQL task<br/>run_transformation<br/><i>consolidated CTE query</i>]
+        RT --> CA[notebook task<br/>create_aggregation_table]
+    end
+```
+
 ## What maps to what
 
 | Matillion (before) | Databricks (after) | Why |
@@ -70,7 +108,7 @@ Lakeflow would only be used if the transformation needed incremental/streaming.
 Point the skill at `matillion/` and compare its output to `databricks/`:
 
 > "Using the matillion-to-databricks skill, convert the pipelines in
-> `examples/demo/matillion/`."
+> `examples/databricks-source/matillion/`."
 
 ## Deploy (optional)
 

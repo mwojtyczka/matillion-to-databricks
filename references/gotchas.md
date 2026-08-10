@@ -87,6 +87,22 @@ Credentials in the Matillion project (connection passwords, API tokens, storage 
 
 `Assert` components and reject/filter logic are data-quality gates. They migrate to **DQX** (the Databricks data quality framework). DQX is a PySpark library, so it runs as a **notebook** task (Python) — or inside a Lakeflow pipeline — never a plain SQL task; but it checks a table produced by *any* task type, so it stays decoupled from the transform's own task type. Two mistakes to avoid: (1) don't reach for a **Lakeflow pipeline** "because there are expectations" — DQX doesn't need one, so pick the transform's task type on its own merits; (2) don't translate a reject-filter into a silent `WHERE` that drops rows — use an `error`-criticality DQX check that **quarantines** them, so failures are auditable. See `references/data-quality.md`. Ensure `databricks-labs-dqx` is installed for the DQX task (a `%pip install` at the top of the notebook, or a cluster/environment library).
 
+## Classic JSON export: type is a number, graph is in `connectors`
+
+The older single-file JSON export has **no `type:` string** and **no inline `transitions`**. A component's type is a numeric `implementationID` (identify it by its parameter-name signature — see `references/classic-json-format.md`), and the step graph lives in separate `successConnectors` / `unconditionalConnectors` / `failureConnectors` (and, for transformations, `connectors`) lists of `sourceID`→`targetID`. Don't look for `transitions`/`sources`/`type` in a classic export — you won't find them, and the graph is in the connector lists.
+
+## Format and backend are independent — don't infer one from the other
+
+Two separate facts about a source: its **export format** (YAML vs classic JSON — governs *parsing*) and its **warehouse backend** (Databricks / Snowflake / Redshift / … — governs *SQL dialect*). They don't imply each other: a classic JSON export can be Databricks-backed, and a Snowflake project can be exported as YAML. The classic-format JSON exports happen to be Snowflake, but that's a coincidence of those files, not a rule. Detect each axis on its own (format by file shape; backend by `dbEnvironment` in JSON, or connection/SQL idioms in YAML).
+
+## Non-Databricks source SQL is not Databricks SQL
+
+If the source backend isn't Databricks (e.g. `dbEnvironment: "snowflake"`), the SQL is that warehouse's dialect — do **not** carry it across verbatim. For Snowflake: three-part `db.SCHEMA.table` → UC `catalog.schema` (parameterized), `::` casts → `CAST`, `IFF` → `IF`, double-quoted UPPERCASE identifiers → backticks, and `GRANT … TO ROLE` is a UC-governance concern (drop from the ETL step), not inline SQL. `QUALIFY` does carry over (Databricks supports it). Full list, and the approach for other backends: `references/snowflake-sql.md`.
+
+## "Snowflake" code can be Python, not just SQL
+
+A `sql-executor` step whose script is `CREATE … LANGUAGE PYTHON` (a Snowpark stored procedure / Python UDF, with `import snowflake.snowpark`) is **Python running inside Snowflake**, not SQL. It doesn't become a SQL task — it becomes a **notebook task** (translate `session.sql(...)` → `spark.sql(...)`, drop the `snowflake-snowpark-python` package and the procedure DDL wrapper). Don't confuse it with Matillion's `python-script` component (Python on the Matillion *agent* — `references/orchestration/python-script.md`). Three kinds of code, three homes — see the table in `references/snowflake-sql.md`.
+
 ## Nested orchestrations (`run-orchestration`)
 
 An orchestration pipeline can call another orchestration pipeline (`run-orchestration`, the shared-job pattern) — distinct from `run-transformation`. It maps to a `run_job_task` (nested Databricks Job), not a pipeline task. Deeply nested chains may hit Databricks' nested-job depth limits; inline (flatten) when the child isn't genuinely reused across parents. See `references/orchestration/run-orchestration.md`.

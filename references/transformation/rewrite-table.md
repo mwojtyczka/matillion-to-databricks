@@ -55,7 +55,7 @@ GROUP BY category, region_name;
 
 ## Worked example (from sales-by-category-region.tran.yaml)
 
-`Write Output` writes the `Aggregate` result to `sample_sales_summary` — the transformation's single output. The chain (`Sales`/`Products`/`Regions` → `Join Products` → `Join Regions` → `Aggregate` → `Write Output`) is linear and yields just this one table, so the reference implementation (`examples/demo/databricks/src/setup/03_sales_by_category_region.sql`) consolidates it into the **single** query above rather than seven. None of the intermediates are reused or need their own quality gate, so materializing them separately would only add storage and refresh cost.
+`Write Output` writes the `Aggregate` result to `sample_sales_summary` — the transformation's single output. The chain (`Sales`/`Products`/`Regions` → `Join Products` → `Join Regions` → `Aggregate` → `Write Output`) is linear and yields just this one table, so the reference implementation in the repo (`examples/databricks-source/databricks/src/setup/03_sales_by_category_region.sql`) consolidates it into the **single** query above rather than seven. None of the intermediates are reused or need their own quality gate, so materializing them separately would only add storage and refresh cost.
 
 ## Gotchas
 

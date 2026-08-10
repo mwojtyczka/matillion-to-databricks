@@ -6,8 +6,17 @@ Instructions for AI agents working on this repository.
 
 This repo **is a skill**, not an application. It is a self-contained pack of
 Markdown that teaches an agent (or a person) to migrate **Matillion** ETL
-pipelines (`*.orch.yaml` / `*.tran.yaml`) to **Databricks** (Jobs with SQL /
-notebook tasks, Lakeflow pipelines only when justified, DQX for data quality).
+pipelines to **Databricks** (Jobs with SQL / notebook tasks, Lakeflow pipelines
+only when justified, DQX for data quality). It handles a source along **two
+independent axes** (don't conflate them):
+- **Export format** — newer per-pipeline **YAML** (`*.orch.yaml` / `*.tran.yaml`)
+  or older single-file **JSON** (all jobs in one `.json`). Governs *parsing*:
+  `references/classic-json-format.md`.
+- **Source warehouse backend** — Databricks (already Spark SQL) or a non-Databricks
+  warehouse (Snowflake, Redshift, …) whose SQL is translated. Governs *dialect*:
+  `references/snowflake-sql.md`.
+A JSON export can be Databricks-backed and a Snowflake project can be YAML — the
+classic-format JSON files are Snowflake only by coincidence.
 
 The deliverable is the *documentation*, so "correctness" means: the guidance is
 internally consistent, and any code it tells the agent to emit actually deploys
@@ -17,7 +26,9 @@ with the same care as production code.
 ```
 SKILL.md            ← entry point: the workflow + the "two decisions" guide
 references/          ← per-component + cross-cutting reference docs
-examples/demo/       ← one worked before/after example (matillion/ → databricks/)
+examples/
+  databricks-source/  ← worked example: DPC/YAML source (Databricks-backed)
+  snowflake-source/   ← worked example: classic JSON source (Snowflake-backed)
 README.md            ← human-facing overview + install instructions
 ```
 
@@ -50,7 +61,8 @@ Two things are deliberately **off** that ladder:
   keeps its name; that's the source-side artifact.)
 - **Consistency across docs is the main hazard.** A single concept is described
   in `SKILL.md`, `references/mapping-cheatsheet.md`, the relevant
-  `references/**/*.md`, `README.md`, and `examples/demo/README.md`. When you
+  `references/**/*.md`, `README.md`, and **both** demo READMEs
+  (`examples/databricks-source/README.md`, `examples/snowflake-source/README.md`). When you
   change guidance, grep for every place that states it and update all of them,
   or they drift. After any change, `grep -ri "<old phrasing>"` to confirm no
   stale copies remain.
@@ -78,8 +90,11 @@ guidance form to it. Don't add untested prose "for completeness".
 - The DQX check *syntax* is owned by the external DQX skills
   (`dqx-define-checks`, `dqx-apply-checks`, `dqx-storage`, …) and its docs. This
   repo covers only *how DQX fits a migration* — link out, don't duplicate the API.
-- Keep `examples/demo/` in sync with the guidance. If a rule changes such that
-  the demo would now be emitted differently, update the demo too.
+- Keep **both** demos (`examples/databricks-source/`, `examples/snowflake-source/`) in
+  sync with the guidance. If a rule changes such that a demo would now be emitted
+  differently, update it too.
+- The `examples/snowflake-source/matillion/*.json` source is **synthetic**, distilled to
+  mirror the real classic-format structure. Don't commit real customer exports.
 
 ## Git
 

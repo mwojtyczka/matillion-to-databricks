@@ -52,7 +52,7 @@ Even for streaming, a notebook running Structured Streaming is often simpler for
 
 ## Worked example (from matillion-migration-demo.orch.yaml)
 
-`Run Transformation` has `transformationJob: "sales-by-category-region.tran.yaml"` and runs after `Generate Fact Data` (`success`). That transformation is a linear chain producing one full-refresh table with no quality gates — so the reference bundle (`examples/demo/databricks/`) implements it as a **SQL task** (`src/setup/03_sales_by_category_region.sql`), not a Lakeflow pipeline. Its `depends_on` is `generate_fact_data`. (Had the pipeline `Assert`ed on that output, a DQX task would follow it — still a SQL task for the transform itself. See `references/data-quality.md`.)
+`Run Transformation` has `transformationJob: "sales-by-category-region.tran.yaml"` and runs after `Generate Fact Data` (`success`). That transformation is a linear chain producing one full-refresh table with no quality gates — so the repo's reference bundle (`examples/databricks-source/databricks/`) implements it as a **SQL task** (`src/setup/03_sales_by_category_region.sql`), not a Lakeflow pipeline. Its `depends_on` is `generate_fact_data`. (Had the pipeline `Assert`ed on that output, a DQX task would follow it — still a SQL task for the transform itself. See `references/data-quality.md`.)
 
 ## Gotchas
 

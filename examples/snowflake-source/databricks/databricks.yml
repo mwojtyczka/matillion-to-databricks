@@ -1,0 +1,46 @@
+# Databricks Asset Bundle converted from the Matillion project in ../matillion/
+#
+# SOURCE: the older Matillion export format — a single JSON file (acme_sales.json)
+# bundling every job, backed by SNOWFLAKE (dbEnvironment: "snowflake"). See
+# ../README.md for the before/after mapping and references/classic-json-format.md +
+# references/snowflake-sql.md in the skill for the parsing + SQL-dialect rules.
+#
+# Mapping:
+#   orchestration "Load Sales Summary"  -> a Databricks Job
+#   transformation "sales_by_region"    -> a Job SQL task
+#     (pure full-refresh SQL, single output, no Lakeflow features -> no pipeline needed)
+#
+# The Snowflake source used a three-part db.SCHEMA.table naming with a ${v_e_sales_db}
+# database variable. On Databricks that database maps to a UC *catalog*: the
+# `catalog`/`schema` bundle variables below are passed as SQL task parameters and
+# applied via USE ... IDENTIFIER(), so no namespace is hardcoded.
+#
+# Deploy with:  databricks bundle deploy -t dev --var warehouse_id=<id>
+# Run with:     databricks bundle run load_sales_summary_job -t dev
+bundle:
+  name: acme-sales-migration
+
+variables:
+  catalog:
+    description: Target Unity Catalog catalog (was the Snowflake ${v_e_sales_db} database)
+    default: main
+  schema:
+    description: Target schema (was the Snowflake SALES schema)
+    default: sales
+  warehouse_id:
+    description: SQL warehouse ID for all SQL tasks (setup + the transform)
+    default: ""  # set to your SQL warehouse ID, e.g. via `-t dev --var warehouse_id=<id>`
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://your-dev-workspace.cloud.databricks.com   # replace with your dev workspace URL
+  prod:
+    mode: production
+    workspace:
+      host: https://your-prod-workspace.cloud.databricks.com  # replace with your prod workspace URL (must differ from dev)

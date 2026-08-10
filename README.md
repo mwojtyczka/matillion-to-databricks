@@ -11,14 +11,23 @@ AI assistants. It is **not** specific to any one tool; the install steps below j
 show where the two most common ones expect it. Even without an agent, the files are a
 readable, worked migration guide you can follow by hand.
 
-It turns Matillion's two pipeline file types into their Databricks equivalents:
+It turns Matillion's two kinds of job into their Databricks equivalents:
 
-| Matillion pipeline | Databricks target |
+| Matillion job | Databricks target |
 |---|---|
-| `*.orch.yaml` — orchestration pipeline (control flow) | **Databricks Job** (Workflow) — always the shell |
-| `*.tran.yaml` — transformation pipeline (dataflow) | a **task in that Job** — SQL task (default), notebook, or a Lakeflow pipeline only when incremental/streaming is needed |
+| orchestration (control flow) | **Databricks Job** (Workflow) — always the shell |
+| transformation (dataflow) | a **task in that Job** — SQL task (default), notebook, or a Lakeflow pipeline only when incremental/streaming is needed |
 
-Cutting across both file types, Matillion **data-quality logic** (`Assert` components,
+It handles a source along **two independent axes** (neither implies the other):
+
+- **Export format** — how the project is parsed:
+  - **DPC / YAML** (newer) — one file per pipeline: `*.orch.yaml` + `*.tran.yaml`.
+  - **Classic / JSON** (older) — a single `.json` bundling every job. Decoded via `references/classic-json-format.md`.
+- **Source warehouse backend** — which SQL dialect gets translated: **Databricks** (already Spark SQL) or a non-Databricks warehouse like **Snowflake / Redshift / BigQuery**, whose SQL is translated to Databricks dialect (`references/snowflake-sql.md`).
+
+The two worked examples pair one point on each axis: `examples/databricks-source/` is YAML + Databricks-backed; `examples/snowflake-source/` is classic JSON + Snowflake-backed. (They deliberately migrate the *same* pipeline so you can diff format-and-dialect against an otherwise-identical example.)
+
+Cutting across both, Matillion **data-quality logic** (`Assert` components,
 reject/filter steps) migrates to a **DQX** quality-gate **notebook** task (Python),
 placed after the checked table to split valid rows from a quarantine table — see
 design principle 8 below and `references/data-quality.md`.
@@ -114,21 +123,26 @@ references/                  ← per-component + cross-cutting reference docs
   ├─ variables.md
   ├─ secrets.md
   ├─ hardcoded-values.md
-  ├─ data-quality.md         ← DQX quality gates (Assert / reject → DQX)
+  ├─ data-quality.md            ← DQX quality gates (Assert / reject → DQX)
+  ├─ classic-json-format.md     ← reading the older single-file JSON export
+  ├─ snowflake-sql.md           ← Snowflake → Databricks SQL translation
   ├─ deploy-and-validate.md
   ├─ transformation/         ← table-input, join, aggregate, rewrite-table
   └─ orchestration/          ← start-end, sql-executor, run-transformation,
                                 run-orchestration, python-script
-examples/demo/               ← a complete before/after worked example
-  ├─ matillion/              ← BEFORE: the original Matillion pipelines (.yaml)
-  └─ databricks/             ← AFTER: the converted DAB (a Job with SQL + notebook tasks; no Lakeflow pipeline needed)
+examples/
+  ├─ databricks-source/      ← worked example, DPC/YAML source (*.orch.yaml + *.tran.yaml)
+  └─ snowflake-source/       ← worked example, classic JSON source (Snowflake-backed)
+       ├─ matillion/         ← BEFORE: the single-file JSON export
+       └─ databricks/        ← AFTER: the converted DAB
 README.md                    ← this file
 ```
 
-See `examples/demo/README.md` for the full before/after mapping.
+See each demo's `README.md` (`examples/databricks-source/`, `examples/snowflake-source/`)
+for the full before/after mapping.
 
 **Required for the skill to work:** `SKILL.md` + the `references/` folder.
-The `examples/demo/` before/after walkthrough is helpful (and referenced by the docs) — keep it.
+The `examples/` before/after walkthroughs are helpful (and referenced by the docs) — keep them.
 Anything else you received (`docs/`, `.superpowers/`, `.claude/`, `.git/`) is
 build/scratch and can be deleted.
 
@@ -172,29 +186,36 @@ target layout is:
   └─ references/ …
 ```
 
-Upload it with the Databricks CLI, **from the skill folder** (the one containing
-`SKILL.md`):
+**Upload just the two skill files — not the whole repo.** The skill *is* `SKILL.md` +
+`references/`; everything else in the repo (`examples/`, `scripts/`, `.github/`, `.git/`,
+any local Matillion input) is for developing the skill, not running it. Don't
+`import-dir .` — it recursively uploads *everything* (there's no `--exclude` flag) into
+what may be a shared path. Upload the two parts explicitly:
 
 ```bash
-# User-level install (only you). $ME resolves to your workspace username.
+# From the repo root. $ME resolves to your workspace username.
 ME=$(databricks current-user me -o json | jq -r .userName)
-databricks workspace import-dir . \
-  "/Users/$ME/.assistant/skills/matillion-to-databricks" \
-  --overwrite
+DEST="/Users/$ME/.assistant/skills/matillion-to-databricks"   # or /Workspace/.assistant/skills/... to share
+
+# 1) SKILL.md — a single file, so use `import` with --format RAW
+#    (RAW stores the Markdown as-is; without it the file is treated as a notebook)
+databricks workspace import "$DEST/SKILL.md" \
+  --file SKILL.md --format RAW --overwrite
+
+# 2) references/ — all Markdown, nothing else, so upload the folder wholesale
+databricks workspace import-dir references "$DEST/references" --overwrite
 ```
 
-```bash
-# — or — Workspace-level install (shared with everyone in the workspace):
-databricks workspace import-dir . \
-  "/Workspace/.assistant/skills/matillion-to-databricks" \
-  --overwrite
-```
+Add `-p <profile>` to either command if you use a named CLI profile.
 
-Add `-p <profile>` to any command if you use a named CLI profile. Only `SKILL.md` +
-`references/` are needed; if you run from a full repo clone, build/scratch dirs
-(`.git/`, `.databricks/`, `examples/…/.databricks/`, …) upload too — harmless, but a
-trimmed copy keeps the skills folder clean. (In the UI you can instead **Import** →
-*File/Folder* into the same path.)
+> **Why not the examples?** The worked demos under `examples/` are illustrative and live
+> in the repo (browse them on GitHub); the skill doesn't need them installed to run a
+> migration, and `examples/**/.databricks/` would otherwise leak your workspace host +
+> Terraform state into the skills path. The references mention the examples as *repo*
+> pointers, not in-skill links.
+
+(In the UI you can instead **Import** → *File/Folder*, selecting `SKILL.md` and the
+`references/` folder.)
 
 **Genie picks it up automatically the next time you use it** (start a new chat thread
 after adding or changing a skill). Invoke it by describing a Matillion migration, or
@@ -323,10 +344,10 @@ The skill triggers on Matillion-migration requests and walks the workflow:
 assemble a Databricks Asset Bundle (`databricks.yml`) → deploy & validate.**
 
 If you don't have your own files yet, try it on the included demo and compare its
-output to the converted code already in `examples/demo/databricks/`:
+output to the converted code already in `examples/databricks-source/databricks/`:
 
 > **"Using the matillion-to-databricks skill, convert the pipelines in
-> `examples/demo/matillion/`."**
+> `examples/databricks-source/matillion/`."**
 
 ---
 
