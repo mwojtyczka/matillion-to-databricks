@@ -275,6 +275,42 @@ Emit the Mermaid node labels and every table row from the *actual* graph and val
 
 The migrated Job reads whatever tables the Matillion transforms read — often **source/input tables the pipeline didn't create itself** (a Snowflake `RAW.*` schema, an ingestion landing table). On a fresh workspace those don't exist, so the Job fails at the first read (`TABLE_OR_VIEW_NOT_FOUND`) until the sources are in place. To let a reviewer run the converted project for a quick test, emit a **setup notebook** that creates and populates those input tables with **synthetic data**.
 
+**Start from this exact skeleton — the first two cells (`%pip install` + `restartPython()`) are REQUIRED and must come before any import, or the notebook fails with `ModuleNotFoundError: dbldatagen` on serverless/vanilla clusters. Do not omit them.**
+
+```python
+# Databricks notebook source
+# MAGIC %md # Setup: synthetic source data (manual pre-step — NOT a Job task)
+# MAGIC Run this by hand once before the first `bundle run`. Guarded (skip-if-exists), so
+# MAGIC it no-ops where the real source tables already exist.
+
+# COMMAND ----------
+# MAGIC %pip install dbldatagen
+
+# COMMAND ----------
+dbutils.library.restartPython()   # REQUIRED: makes the freshly-installed package importable
+
+# COMMAND ----------
+dbutils.widgets.text("catalog", "main")
+dbutils.widgets.text("schema", "…")   # one widget per target schema the transforms read
+catalog = dbutils.widgets.get("catalog")
+schema  = dbutils.widgets.get("schema")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
+
+# COMMAND ----------
+import dbldatagen as dg
+from pyspark.sql.types import StringType, IntegerType, DateType, TimestampType
+
+# COMMAND ----------
+# one guarded block PER source table the transforms read (see rules below)
+_t = f"{catalog}.{schema}.<SOURCE_TABLE>"
+if not spark.catalog.tableExists(_t):
+    (dg.DataGenerator(spark, name="<source_table>", rows=200, partitions=1, randomSeed=42)
+        # .withColumn(...) for EVERY column any transform reads from this table
+    ).build().write.mode("overwrite").saveAsTable(_t)
+```
+
+Then fill it in per these rules:
+
 - **It's a manual pre-setup step the user runs once — NOT a task in the Job.** Emit `src/setup/00_generate_source_data.py` as a standalone Databricks **notebook** (`# Databricks notebook source` first line) and keep it **out of the Job's task graph** — don't add it as a task or a `depends_on`. The user runs it themselves before the first `bundle run` (document this in the README's deployment steps + post-migration checklist). Keeping it out of the pipeline means the production Job never fabricates data as a side effect.
 - **Guard every write with existence checks.** Use `CREATE TABLE IF NOT EXISTS` (or check the catalog and skip when the table is present) so running the notebook against a workspace that already has the real source tables no-ops instead of clobbering them, and re-running is idempotent.
 - **Identify the inputs to create:** every table a transform reads (a source/read node — no incoming connectors) that **no task in the Job produces** is a source input to fabricate.
@@ -285,14 +321,18 @@ The migrated Job reads whatever tables the Matillion transforms read — often *
   - **Install + restart:** dbldatagen is **not** on serverless / vanilla clusters, so the notebook's first two cells are `%pip install dbldatagen` then `dbutils.library.restartPython()` — before any widgets/imports (restart clears state).
   - **Notebook shape:** `%pip install` → `restartPython()` → `catalog`/`schema` widgets → `CREATE SCHEMA IF NOT EXISTS` → per source table a skip-if-exists guard populated by one `dg.DataGenerator(...).build()` + `.saveAsTable()`.
   - **Align keys to the transforms' joins:** a child table's foreign-key range must be a subset of its parent's primary-key range, or the migrated transform's joins silently drop rows. (Mind dbldatagen's `id` base value when deriving keys.)
+  - **Rename the implicit seed column when the table has its own `ID`/`id`.** `dg.DataGenerator(...)` auto-adds a sequence column named `id`; if the table also defines an `ID` column, the build fails with `AMBIGUOUS_REFERENCE: Reference \`ID\` is ambiguous, could be: [\`ID\`, \`ID\`]` (Spark is case-insensitive). Pass **`seedColumnName="_seq"`** to `DataGenerator(...)` so the seed doesn't collide (safe to set on every block).
   - Set `partitions` explicitly and a fixed seed for reproducibility.
 - **Make clear it's synthetic and a test convenience.** A header comment must state the notebook fabricates stand-in data for a test run, is run manually (not part of the Job), skips tables that already exist, and that for production the real ingestion should populate these tables instead. The README's synthetic-data section (Step 5b) documents what it creates; the deployment steps and post-migration checklist must tell the user to run it first for a test.
+- **Run the notebook and fix it until it succeeds — don't hand over an unexecuted notebook.** If you can execute in the workspace (e.g. Genie can run notebooks/SQL) or via the CLI, **actually run `00_generate_source_data.py`** and iterate on every error until all tables are created: `ModuleNotFoundError` (missing `%pip`/restart), `DataGenError`/`ValueError` (bad dbldatagen option or date format), `AMBIGUOUS_REFERENCE` (`id` seed collision → `seedColumnName`), a bad `values=[None]`/`template` — fix and re-run. A setup notebook that only *looks* right but hasn't been executed is the top source of a failed first `bundle run`. Emitting is not done; **running green is done.**
 
 `references/snowflake-sql.md` explains why source tables are often external (the Snowflake `RAW.*` assumption). The two repo demos instead seed tiny fixtures inline in their first SQL task — a simpler equivalent when the data is trivial and you don't mind it running each time.
 
 ## Step 5d — Verify the bundle against the checklist (required)
 
 Before deploying, **run every item in `references/verification-checklist.md` against the generated bundle** and fix each finding. This is a required gate, not a nicety: it converts the dialect/DAB/setup gotchas scattered across the references into a concrete, greppable pass, and it is the step that catches the silent SQL bugs (`"quoted"` identifiers, `SELECT *,x AS existing`, `UPDATE…FROM`, `datediff(unit,…)`, `UNION` misalignment, unresolved `$T{}` placeholders, missing setup columns, …) that otherwise only surface as run-time task failures one at a time. If you can run the CLI, also run `databricks bundle validate -t dev`. Don't present the bundle as complete until this passes.
+
+**If you can execute (Genie in-workspace, or CLI), don't stop at static checks — actually run it green.** The grep checklist catches the known classes, but the definitive test is execution. When you have a workspace to run against: run the setup notebook (Step 5c), deploy, then run the Job, and **fix each task failure and re-run until the whole Job is green** — that is the loop that surfaces the SQL-translation and data-shape bugs no static scan can. Only claim the migration works if you've *seen* it run (or you've told the user you couldn't execute and they must verify). "Generated and grep-clean" is weaker than "ran green" — reach the latter whenever you can.
 
 ## Step 6 — Deploy and validate
 
