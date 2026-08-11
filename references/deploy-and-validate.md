@@ -11,10 +11,17 @@ deployment skill rather than hand-rolling commands:
 
 That skill handles Lakeflow pipelines + Jobs, prefers serverless compute, uses `databricks sync`, and enforces UC 3-layer namespaces.
 
-**If you are running inside the workspace and CANNOT run the CLI (e.g. Databricks
-Genie / Assistant):** you cannot deploy. **Generate the bundle, then explicitly ask the
-user to run the deploy themselves** — never claim you deployed it. Give them the exact
-commands and where the bundle is.
+**If you are Genie in-workspace:** you have a **job-scoped** CLI (`runDatabricksCli` —
+trigger/list runs, inspect run output), but **`bundle deploy`/`validate`/`run`/`destroy`
+are outside its allow-list, so you cannot deploy.** Generate the bundle, run the setup
+notebook, and **ask the user to run the *initial* deploy themselves** (exact command +
+bundle location below) — never claim you deployed it. **After** that first deploy exists,
+you *can* iterate on the SQL/notebook layer: trigger the Job via the job-scoped CLI, read
+each failed task's output, fix transform-content bugs in the deployed source files in
+place, re-run the setup notebook if a source table changed, and re-trigger — until the
+transforms are green. Only a change to `resources/*.yml` (task graph, `run_if`, paths,
+serverless, params) needs another user-run `bundle deploy`, since bundle commands stay
+outside your allow-list.
 
 **The committed `databricks.yml` keeps placeholders** (empty `warehouse_id`, placeholder
 host) so no real environment values are baked in — which means a bare `databricks bundle

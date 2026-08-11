@@ -6,16 +6,18 @@ through unless you emit the bundle correctly in the first place.
 
 **Who can catch these, and how — this drives everything below:**
 
-- **If you (the agent) can run the CLI** (e.g. Claude Code): run **`databricks bundle
+- **If you (the agent) can run a shell/CLI** (e.g. Claude Code): run **`databricks bundle
   validate -t dev`** on the generated bundle and fix every error **before** handing it off
   or deploying. This catches the path and `run_if`/`outcome` errors below automatically.
   Do this as a required step, not an afterthought.
-- **If you are inside the workspace and CANNOT run the CLI** (e.g. Databricks Genie /
-  Assistant): you **cannot** validate — there is no `bundle validate` without the CLI. So
-  the bundle must be **correct by construction**. Every rule below is then mandatory, not a
-  safety net, because nothing will catch a mistake before the user tries to deploy. (Most
-  of the bugs this file documents were shipped by an in-workspace generator that couldn't
-  validate.)
+- **If you are Genie in-workspace:** the structural bugs in this file are the ones you
+  **cannot** fix in-loop. Genie has a **job-scoped** CLI (trigger/inspect Job runs), which
+  is enough to iterate on *transform-content* bugs against an already-deployed Job — but
+  **`bundle validate`/`deploy` are outside its allow-list**, so a `resources/*.yml` mistake
+  can be neither caught by `validate` nor fixed by a redeploy without going back to the
+  user. That makes every rule below **mandatory and correct-by-construction** on the Genie
+  path, not a safety net. (Most of the bugs this file documents were shipped by an
+  in-workspace generator that couldn't validate.)
 
 Either way: **emit it right.** The rules below are cheap to follow and expensive to debug
 after the fact.
