@@ -60,9 +60,9 @@ REGION_NAMES = ["North America", "Europe", "Asia Pacific"]
 # products_src — product_id 1..N_PRODUCTS; some NULL categories exercise the IF(...) branch downstream
 if not table_exists("products_src"):
     products = (
-        dg.DataGenerator(spark, name="products_src", rows=N_PRODUCTS, partitions=1, randomSeed=42)
-        .withColumn("product_id", StringType(), expr="cast(id + 1 as string)")
-        .withColumn("product_name", StringType(), expr="concat('Product ', id + 1)")
+        dg.DataGenerator(spark, name="products_src", rows=N_PRODUCTS, partitions=1, randomSeed=42, seedColumnName="_seq")
+        .withColumn("product_id", StringType(), expr="cast(_seq + 1 as string)")
+        .withColumn("product_name", StringType(), expr="concat('Product ', _seq + 1)")
         .withColumn("category", StringType(), values=CATEGORIES, percentNulls=0.2, random=True)
         .build()
     )
@@ -71,8 +71,8 @@ if not table_exists("products_src"):
 # regions_src — region_id 1..N_REGIONS
 if not table_exists("regions_src"):
     regions = (
-        dg.DataGenerator(spark, name="regions_src", rows=N_REGIONS, partitions=1, randomSeed=42)
-        .withColumn("region_id", StringType(), expr="cast(id + 1 as string)")
+        dg.DataGenerator(spark, name="regions_src", rows=N_REGIONS, partitions=1, randomSeed=42, seedColumnName="_seq")
+        .withColumn("region_id", StringType(), expr="cast(_seq + 1 as string)")
         .withColumn("region_name", StringType(), values=REGION_NAMES)
         .build()
     )
@@ -82,7 +82,7 @@ if not table_exists("regions_src"):
 # so duplicates occur and the transform's QUALIFY ROW_NUMBER() dedupe has something to do.
 if not table_exists("sales_src"):
     sales = (
-        dg.DataGenerator(spark, name="sales_src", rows=N_SALES, partitions=1, randomSeed=42)
+        dg.DataGenerator(spark, name="sales_src", rows=N_SALES, partitions=1, randomSeed=42, seedColumnName="_seq")
         .withColumn("sale_id", StringType(), expr="cast(cast(rand(1)*15 as int) + 1 as string)")
         .withColumn("product_id", StringType(),
                     expr=f"cast(cast(rand(2)*{N_PRODUCTS - 1} as int) + 1 as string)")

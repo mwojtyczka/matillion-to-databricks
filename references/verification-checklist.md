@@ -74,8 +74,9 @@ just delete the marker.
 
 - [ ] **`%pip install dbldatagen` + `dbutils.library.restartPython()`** in the first cells (before imports).
 - [ ] **Every column every transform reads** from a source table is generated (union across all transforms; include hyphenated names like `` `445_YYYY-MM` ``). Missing → `UNRESOLVED_COLUMN` at run time.
-- [ ] **dbldatagen options valid** — `percentNulls` (not `nullProbability`); `DateType` `begin/end` are date-only, `TimestampType` full `YYYY-MM-DD HH:MM:SS`; distinct seed column if a real `ID` column exists.
-- [ ] **FK ranges ⊆ PK ranges** so joins match (mind 0-based `id`).
+- [ ] **dbldatagen options valid** — `percentNulls` (not `nullProbability`); `DateType` `begin/end` are date-only, `TimestampType` full `YYYY-MM-DD HH:MM:SS`.
+- [ ] **Every `DataGenerator(...)` sets `seedColumnName="_seq"`.** `grep -c 'dg\.DataGenerator(' $SRC/setup/*.py` must equal `grep -c 'seedColumnName' $SRC/setup/*.py`. The implicit `id` seed collides with any `ID`/`id` column → `AMBIGUOUS_REFERENCE: Reference \`ID\` is ambiguous`. Set it on every block unconditionally (harmless when there's no `ID`) — don't decide per-table.
+- [ ] **FK ranges ⊆ PK ranges** so joins match (mind the seed base value).
 
 ## Final
 
