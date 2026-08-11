@@ -256,6 +256,34 @@ should see **matillion-to-databricks** in the list.
 
 ---
 
+## Claude Code vs. Genie — what each can do
+
+The same skill runs in both, but **how far it can take the migration differs**, because
+of one hard boundary: `databricks bundle` commands (`validate` / `deploy` / `run` /
+`destroy`) require a shell CLI. Claude Code has one; Genie does not (its CLI is
+**job-scoped** — it can trigger and inspect Job *runs*, but not run bundle commands).
+
+| Capability | **Claude Code** (local, full CLI) | **Genie** (in-workspace) |
+|---|---|---|
+| Generate the bundle | ✅ | ✅ |
+| `bundle validate` (catch structural errors early) | ✅ | ❌ — must be correct by construction |
+| Run the setup notebook (synthetic data) | ✅ | ✅ |
+| Initial `bundle deploy` | ✅ | ❌ — **you** run it once from a CLI |
+| Trigger the Job + read per-task failures | ✅ | ✅ (job-scoped CLI) |
+| Iterate on **SQL/notebook** bugs → re-run | ✅ (redeploys itself) | ✅ *after* the first deploy (edits deployed source in place) |
+| Fix **`resources/*.yml`** structure (task graph, `run_if`, serverless) | ✅ (redeploys) | ❌ — needs a user redeploy |
+| **Drive the whole Job to green autonomously** | ✅ end-to-end | ⚠️ partial — SQL layer only, structural fixes escalate |
+| Compare output to an expected/golden dataset | ✅ (queries + diffs itself) | ✅ if you provide the expected data in-workspace (runs the SQL) |
+
+**Rule of thumb:** with **Claude Code** you can hand it the Matillion export and let it
+deploy, run, fix, and re-run until every task is green — and reconcile against expected
+output if you provide it. With **Genie** you get a correct-by-construction bundle plus
+in-workspace iteration on the SQL layer, but you run the one `bundle deploy` yourself and
+own any structural redeploys. Neither removes the final **review the generated code**
+step.
+
+---
+
 ## How to run a conversion in Genie
 
 Once the skill is installed under `.assistant/skills/matillion-to-databricks/` (above),
@@ -343,7 +371,13 @@ the flow is: **upload your Matillion files, start a fresh chat, then prompt.**
 
 The skill triggers on Matillion-migration requests and walks the workflow:
 **inventory → parse the orchestration/transformation graphs → map each component →
-assemble a Databricks Asset Bundle (`databricks.yml`) → deploy & validate.**
+assemble a Databricks Asset Bundle (`databricks.yml`) → deploy, then run the Job and
+fix-and-redeploy until every task is green.** With a CLI, Claude drives that
+run-to-green loop autonomously (pausing only for destructive ops or decisions it can't
+make) — and if you hand it **expected output** (a golden table, or a row-count +
+aggregate spec) it reconciles the migrated results against it. To let it drive the loop,
+just say so, e.g. *"deploy it and drive the Job to green,"* and provide a target
+`catalog.schema` + `warehouse_id` it can use.
 
 If you don't have your own files yet, try it on the included demo and compare its
 output to the converted code already in `examples/databricks-source/databricks/`:
@@ -376,10 +410,13 @@ output to the converted code already in `examples/databricks-source/databricks/`
   **synthetic data** (via `dbldatagen`) so the converted project runs without wiring real
   sources. It's kept out of the Job graph and guarded (`IF NOT EXISTS`), so against a
   workspace that already has the real sources it no-ops.
-- A **validation checklist** (tables exist, row counts sane, an aggregate spot-check).
-  Deployment itself is a CLI step (`databricks bundle deploy`) you run — in Claude Code
-  the agent runs it for you; in Genie you run it from a machine with the CLI (see the
-  Genie deploy step above).
+- A **validation checklist** (tables exist, row counts sane, an aggregate spot-check),
+  plus — when you provide **expected output** (a golden table/file, or a row-count +
+  key-aggregate spec) — an **output-reconciliation** pass that diffs the migrated Job's
+  results against it. Deployment itself is a CLI step (`databricks bundle deploy`): in
+  Claude Code the agent runs the full **deploy → run → fix → redeploy** loop until the
+  Job is green (and reconciles against expected output if given); in Genie you run the
+  first deploy from a machine with the CLI (see the table above and the Genie deploy step).
 
 ---
 

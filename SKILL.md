@@ -352,7 +352,7 @@ the same overwrite/quote/`datediff` bugs hide inside `spark.sql("…")` strings.
 **If you can execute, don't stop at static checks — actually run it green.** The grep checklist catches the known classes, but the definitive test is execution. Run the setup notebook (Step 5c), deploy, run the Job, and **fix each task failure and re-run until the whole Job is green** — that is the loop that surfaces the SQL-translation and data-shape bugs no static scan can. Only claim the migration works if you've *seen* it run (or you've told the user you couldn't execute and they must verify). "Generated and grep-clean" is weaker than "ran green".
 
 **How much of that loop you can run depends on where you are — there are three execution layers, not two (see Step 6):**
-- **CLI agent (e.g. Claude Code):** full loop — `bundle deploy` → `bundle run` → fix → redeploy → rerun. Reaches green unaided.
+- **CLI agent (e.g. Claude Code):** run the **autonomous run-to-green loop** (Step 6a) — `bundle deploy` → `bundle run` → read each failed task's output → fix → redeploy → rerun, repeating until **every task is SUCCESS**. This is the intended default when you have a CLI: don't stop at "generated" or "deployed", drive it green. Escalate to the user only for (a) destructive ops (`DROP SCHEMA … CASCADE`, `bundle destroy`), (b) a failure you can't diagnose after a genuine attempt, or (c) a data-*semantics* gap that needs a business decision. Then, if the user supplied expected output, run the **reconciliation** pass (Step 6b).
 - **Genie in-workspace:** a *partial* loop. Genie can run notebooks/SQL and — via its **job-scoped** CLI (`runDatabricksCli`: trigger runs, list runs, inspect run output) — trigger an **already-deployed** Job and read each task's failure. So once someone has done the *initial* `bundle deploy`, Genie **can** iterate on **transform-content bugs** (the SQL/notebook layer — EXCEPT, UNION, dialect, unresolved-column, MERGE, SPLIT_TO_TABLE — most of what fails) by editing the deployed source files in place and re-triggering the Job. What Genie **cannot** do is any `bundle` command (`validate`/`deploy`/`run`/`destroy` are outside its allow-list), so it can't create the Job initially, and it can't make a **`resources/*.yml` structural change** (task deps, `run_if`, `../` paths, serverless, cross-task params) take effect — those need a redeploy. Genie escalates those to the user.
 - **Generate-only (no execution at all):** rely on correct-by-construction + the checklist + `check_setup_coverage.py`, and tell the user they must run it.
 
@@ -374,3 +374,38 @@ Whoever performs these steps depends on where you (the agent) are running — bu
 - **If you're Genie in-workspace:** you have a **job-scoped** CLI (`runDatabricksCli` — triggering/listing runs, inspecting run output) but **`bundle validate`/`deploy`/`run`/`destroy` are outside your allow-list.** So you **cannot** create or redeploy the Job. Do this instead: generate the bundle, run the setup notebook, and **ask the user to run the initial `databricks bundle deploy` once** (hand them the exact command + bundle location; never claim you deployed it). Because the committed `databricks.yml` ships placeholders, that command **must pass the config with `--var`** (`warehouse_id`, `catalog`, `schema`, …) from the Step 5 answers — a bare `bundle deploy` fails on the empty `warehouse_id`. **After** that first deploy, you *can* iterate: trigger the Job with the job-scoped CLI, read each failed task's output, fix **transform-content** bugs by editing the deployed source files in place, re-run the setup notebook if a source table changed, and re-trigger — until the SQL layer is green. Escalate back to the user for a **redeploy** only when a fix touches `resources/*.yml` (task graph, `run_if`, paths, serverless, params), since those don't take effect without `bundle deploy`. See `references/deploy-and-validate.md` for the ready-to-run template.
 
 Then validate: in Claude Code use `fe-databricks-tools:databricks-query`; in Genie run the checklist SQL in-chat (Genie can run SQL). Follow the checklist in `references/deploy-and-validate.md`.
+
+## Step 6a — The autonomous run-to-green loop (CLI agent)
+
+When you have a shell CLI, **do not stop at "deployed" — loop until every task is green.**
+This is the default, not an extra. The mechanics (they matter — reinventing them wastes runs):
+
+1. **Coverage-gate the setup notebook first.** Run `python3 scripts/check_setup_coverage.py <bundle-dir>` and fix any missing columns *before* the first run — this pre-empts the single most common failure class (`UNRESOLVED_COLUMN` on a missing source column), which otherwise surfaces one task-run at a time.
+2. **Deploy + run setup + run the Job** (Step 6, with the `--var`s).
+3. **On failure, get the *per-task* error, not the run-level summary.** The run-level message is just "Task X failed". Pull the real analysis error from the failed task's run output — e.g. `databricks api get "/api/2.1/jobs/runs/get?run_id=<run>"` → find the failed task's `run_id` → `.../runs/get-output?run_id=<task_run>` and read `.error`. That gives the exact `UNRESOLVED_COLUMN` / `PARSE_SYNTAX_ERROR` / `COLUMN_ALREADY_EXISTS` / etc. to fix.
+4. **Fix the class, not just the instance.** Each error maps to a class in `references/verification-checklist.md` (EXCEPT-of-created-column, UNION-by-position, lateral-alias-in-window, `${}`-in-SQL, `SPLIT_TO_TABLE`, `UPDATE…FROM`, mangled dates, …). When you hit one, **grep the whole bundle for the same pattern and fix every occurrence** — don't fix one and redeploy, or you'll pay a full round-trip per instance.
+5. **Redeploy and rerun.** Repeat 3–5 until the run reaches `TERMINATED / SUCCESS` with every task `SUCCESS`.
+6. **Stop / escalate rules.** Done = all tasks SUCCESS. Escalate to the user for: destructive ops (`DROP SCHEMA … CASCADE`, `bundle destroy` — never run these without explicit authorization), an error you genuinely can't diagnose after trying, or a **data-semantics** question (what a transform *should* compute) that needs a human. Don't loop forever on an unchanging error — if a fix doesn't change the error, stop and report.
+7. **Whenever a run surfaces a *new* bug class, update the skill** (`references/verification-checklist.md` + the relevant reference), per AGENTS.md — the loop's job is both to green *this* bundle and to harden the skill for the next.
+
+## Step 6b — Reconcile against expected output (when provided)
+
+A green run proves the Job *executes*; it does not prove the results are *correct*. If the
+user provides **expected output** — a golden table/file, or a spec of row counts + key
+aggregates — reconcile against it after the Job is green:
+
+- **Only meaningful against real (or user-supplied) source data.** The synthetic setup
+  notebook (Step 5c) fabricates *random* stand-in data, so migrated values won't match the
+  real Matillion output — with synthetic data you can only check schema/shape, not values.
+  Run value reconciliation when the Job ran against **real sources** or a user-supplied
+  input+expected pair.
+- **Golden table/file** → diff per output table: same schema (column names + types), same
+  row count, and a key-based value comparison (`EXCEPT`/anti-join on the primary key, or a
+  full-row hash) — report any rows that differ, are missing, or are extra.
+- **Row-count + key-aggregate spec** → check each output table's `COUNT(*)` and the
+  specified aggregates (`SUM`/`MIN`/`MAX`/`COUNT(DISTINCT …)` of the named columns) equal
+  the expected values; report every mismatch with expected-vs-actual.
+- **A mismatch is a migration bug, usually a semantic dialect difference** (rounding,
+  null-handling, date boundaries, join multiplicity, `QUALIFY`/dedupe) — trace it to the
+  transform and fix, then re-run and re-reconcile. Report the final reconciliation result;
+  don't claim fidelity you didn't measure.

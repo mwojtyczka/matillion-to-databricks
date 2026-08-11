@@ -85,6 +85,24 @@ after the user confirms the deploy succeeded.
   SELECT SUM(revenue) FROM my_catalog.my_schema.sample_sales_summary;  -- must equal
   ```
 - [ ] The Job ran green end-to-end (all tasks succeeded in the run history).
+- [ ] **If the user provided expected output, reconcile against it** (`SKILL.md` → Step 6b).
+  A green run proves execution, not correctness. Only compare *values* when the Job ran
+  against **real** source data (or a user-supplied input+expected pair) — synthetic setup
+  data (Step 5c) is random, so with it you can only check schema/shape.
+  - **Golden table/file** — same schema, same row count, key-based value diff:
+    ```sql
+    -- rows in expected but not produced (and swap args for the reverse)
+    SELECT * FROM my_catalog.my_schema.expected_summary
+    EXCEPT
+    SELECT * FROM my_catalog.my_schema.sample_sales_summary;   -- must return 0 rows
+    ```
+  - **Row-count + aggregate spec** — each `COUNT(*)` and named aggregate equals expected:
+    ```sql
+    SELECT COUNT(*) AS n, SUM(revenue) AS total_revenue
+    FROM my_catalog.my_schema.sample_sales_summary;            -- compare to the spec
+    ```
+  A mismatch is a migration bug (usually a dialect-semantics difference — rounding, nulls,
+  date boundaries, join multiplicity, dedupe); trace to the transform, fix, re-run, re-check.
 
 ## Gotcha
 
