@@ -87,9 +87,13 @@ REFACTOR discipline — decide what failure the change addresses, then match the
 guidance form to it. Don't add untested prose "for completeness".
 
 - Keep `SKILL.md` the concise entry point; push detail into `references/`.
-- The DQX check *syntax* is owned by the external DQX skills
-  (`dqx-define-checks`, `dqx-apply-checks`, `dqx-storage`, …) and its docs. This
-  repo covers only *how DQX fits a migration* — link out, don't duplicate the API.
+- **Externally-owned APIs are linked, never duplicated here.** The DQX check
+  *syntax* is owned by the external DQX skills (`dqx-define-checks`,
+  `dqx-apply-checks`, `dqx-storage`, …) and its docs; the **dbldatagen** API (for
+  the setup-notebook synthetic data) is owned by the `databricks-data-generation`
+  skill + <https://databrickslabs.github.io/dbldatagen/>. This repo covers only
+  *how each fits a migration* — link out, don't hardcode their option names/API
+  (a copied option list goes stale and invites wrong-name bugs).
 - Keep **both** demos (`examples/databricks-source/`, `examples/snowflake-source/`) in
   sync with the guidance. If a rule changes such that a demo would now be emitted
   differently, update it too.
