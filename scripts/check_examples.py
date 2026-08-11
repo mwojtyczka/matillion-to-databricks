@@ -70,6 +70,15 @@ def main() -> int:
             if s.startswith("%") and not s.startswith("%%"):
                 errors.append(f"{rel}:{i}: bare magic '{s}' must be a '# MAGIC {s}' line")
 
+    # 3. Helper scripts under scripts/ must at least compile (rot protection).
+    for f in sorted(ROOT.rglob("scripts/*.py")):
+        if _skip(f):
+            continue
+        try:
+            py_compile.compile(str(f), doraise=True)
+        except py_compile.PyCompileError as e:
+            errors.append(f"py_compile error in {f.relative_to(ROOT)}: {e}")
+
     if errors:
         print("FAILED — example checks found issues:")
         for e in errors:

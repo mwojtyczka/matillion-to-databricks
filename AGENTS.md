@@ -77,7 +77,12 @@ Two things are deliberately **off** that ladder:
   no unfillable literals like `/Workspace/.../`. Run `python3
   scripts/check_examples.py` before committing — CI runs it too
   (`.github/workflows/ci.yml`): it parses all YAML and lints/compiles the
-  notebook sources under `examples/**/src/`.
+  notebook sources under `examples/**/src/`, and compiles the helper scripts.
+- **`scripts/check_setup_coverage.py <bundle-dir>` is a generation-time tool**, not a
+  repo-CI check: run it against a *generated* bundle to prove the synthetic-data setup
+  notebook produces every column the transforms read (the dominant setup failure). It's
+  static (no workspace), and referenced from `SKILL.md` Step 5c + the verification
+  checklist. CI only compiles it so it can't rot.
 
 ## Editing the skill (this is TDD for docs)
 
