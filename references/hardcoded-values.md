@@ -39,6 +39,25 @@ Decision shortcuts:
 - **Does it change between runs?** → job parameter.
 - **Does it never change?** → leave it inline; don't over-parameterize.
 
+## Cross-database sources — mapping multiple source namespaces
+
+Real projects often read from **several source databases** — e.g. a Snowflake project with
+`${v_e_prisma_dm}.PRISMA.*` and `${v_e_adl_dm}.AD_ODA.*`, or a Matillion project spanning
+multiple databases/schemas. Databricks UC is a 3-level namespace (`catalog.schema.table`),
+and Snowflake's `database.schema.table` maps onto it — but *how* you fold multiple source
+databases in is a **decision to put to the user**, not to assume. Three options:
+
+| Option | When it fits | Shape |
+|---|---|---|
+| **(a) one catalog, multiple schemas** | the source DBs are really one logical domain; you want them co-located and governed together | `${var.catalog}` + a bundle variable per source schema (`prisma_schema`, `adl_schema`); each source DB → a schema |
+| **(b) multiple catalogs** | the source DBs map to genuinely separate governance/isolation boundaries (prod vs. reference data, different owners) | a bundle variable per catalog (`prisma_catalog`, `adl_catalog`); each source DB → its own catalog |
+| **(c) collapse to one schema** | quick demo/dev where isolation doesn't matter | everything into one `${var.catalog}.${var.schema}`; simplest, but loses the source's separation |
+
+Whichever is chosen, surface **each distinct source database variable** as its own bundle
+variable (per the table above) and map every three-part reference in the SQL through it —
+don't hardcode. Confirm the mapping with the user; (a) is a sensible default for a
+lift-and-shift, (c) for a throwaway test.
+
 ## Step 3 — Surface and confirm
 
 Present the findings as a table — *value (or a redacted placeholder for secrets), where

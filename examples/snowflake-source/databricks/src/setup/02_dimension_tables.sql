@@ -11,8 +11,14 @@
 --   * GRANT ... TO ROLE    ->  dropped from the transform; UC grants are managed
 --                              separately (GRANT ... TO `group`), not inside an ETL step.
 --                              See references/snowflake-sql.md -> "GRANT".
+--
+-- As the Job's first task, this also ensures the target schema exists so the Job runs
+-- against a fresh catalog. (Source tables products_src/regions_src/sales_src must already
+-- exist — populate them with src/setup/00_generate_source_data.py for a standalone test,
+-- or point at the real RAW.* tables in production.)
 
 USE CATALOG IDENTIFIER(:catalog);
+CREATE SCHEMA IF NOT EXISTS IDENTIFIER(:schema);
 USE SCHEMA IDENTIFIER(:schema);
 
 CREATE OR REPLACE TABLE dim_products AS

@@ -364,6 +364,16 @@ output to the converted code already in `examples/databricks-source/databricks/`
   (never inlined or turned into variables).
 - Matillion **data-quality gates** (`Assert` / reject logic) migrated to **DQX** tasks
   that split valid rows from a quarantine table (only when the project has them).
+- A **generated `README.md`** at the bundle root that documents the migration: source-project
+  summary, bundle layout, a **before/after** Mermaid DAG (Matillion source graph vs. the
+  Databricks Job, so you can see what got consolidated), the key translations, variables,
+  secrets, a synthetic-data summary, deploy commands, a post-migration checklist, and the
+  source file list.
+- A **setup notebook** (`src/setup/00_generate_source_data.py`) you run **manually once**
+  before the first test run — it fabricates any missing source/input tables with
+  **synthetic data** (via `dbldatagen`) so the converted project runs without wiring real
+  sources. It's kept out of the Job graph and guarded (`IF NOT EXISTS`), so against a
+  workspace that already has the real sources it no-ops.
 - A **validation checklist** (tables exist, row counts sane, an aggregate spot-check).
   Deployment itself is a CLI step (`databricks bundle deploy`) you run — in Claude Code
   the agent runs it for you; in Genie you run it from a machine with the CLI (see the

@@ -117,6 +117,7 @@ See:
 | `run-transformation` | `references/orchestration/run-transformation.md` |
 | `run-orchestration` | `references/orchestration/run-orchestration.md` |
 | `python-script` | `references/orchestration/python-script.md` |
+| webhook / API step (Teams/Slack notify) | `references/orchestration/webhook.md` |
 | `Assert` / reject-filter (data quality) | `references/data-quality.md` |
 | classic JSON export format (parsing) | `references/classic-json-format.md` |
 | non-Databricks source SQL (Snowflake, etc.) | `references/snowflake-sql.md` |
@@ -125,14 +126,14 @@ See:
 
 ## Step 3 — Parse each transformation graph
 
-For each transformation, walk the dataflow DAG from `table-input` leaves to the final table-output. This describes one (or a few) output tables and how to compute them. In the **YAML format** the edges are `sources` refs inside each `.tran.yaml`; in the **classic JSON format** they are the job's single `connectors` list (`sourceID`→`targetID`) — see `references/classic-json-format.md`. If the source backend isn't Databricks (e.g. Snowflake), translate each component's SQL/expressions via `references/snowflake-sql.md` as you go.
+For each transformation, walk the dataflow DAG from the source (read) leaves to the sink (write) nodes. This describes one (or a few) output tables and how to compute them. In the **YAML format** the edges are `sources` refs inside each `.tran.yaml`; in the **classic JSON format** they are the job's single `connectors` list (`sourceID`→`targetID`) — and a component's **read-vs-write role is set by its DAG position, not its type** (a node with no incoming edges is a source; no outgoing edges, a sink), so derive roles from the graph — see `references/classic-json-format.md`. If the source backend isn't Databricks (e.g. Snowflake), translate each component's SQL/expressions via `references/snowflake-sql.md` as you go.
 
-**Consolidate first, then pick the task type.** A linear chain that yields a single output collapses into **one query** (CTEs for the intermediate `join`/`aggregate` components) — don't emit one dataset per component. Then apply the task-type ladder from "The two decisions" above:
+**Consolidate first, then pick the task type.** A **linear** chain collapses into **one query** (a CTE per intermediate `join`/`aggregate` component) — **regardless of length**; a 30-component linear chain is still one `CREATE OR REPLACE TABLE ... AS WITH … SELECT`, not one dataset per component. What breaks the single-query default is **DAG shape, not size** (details in `references/transformation/rewrite-table.md`): a **diamond/fan-out** (a component feeds two+ downstream paths that reconverge) or **multiple sinks** → a **notebook** with one `CREATE OR REPLACE TEMP VIEW` for each shared/branch node (computed once, reused), sinks writing tables. Then apply the task-type ladder from "The two decisions" above:
 - pure full-refresh SQL → **SQL task** (`CREATE OR REPLACE TABLE ... AS <one SELECT>`) — the common case;
 - needs Python/imperative glue → **notebook task**;
 - genuinely needs incremental/streaming → **Lakeflow pipeline** (then the consolidation rule about materialized views vs. CTEs applies — `references/transformation/rewrite-table.md`).
 
-Keep a component as its own dataset only when it earns it: it's **reused**, needs independent **monitoring**, or is a genuine **branch point**.
+Keep a component as its own dataset only when it earns it: it's **reused**, needs independent **monitoring**, or is a genuine **branch point**. Also watch for an **identical sub-graph repeated across several transformations** (e.g. a shared staff/org-structure lookup) — extract it once as a shared view/table or SQL file rather than duplicating the CTE logic in every output (`references/transformation/rewrite-table.md` → "Repeated sub-graphs").
 
 **Watch for data-quality logic while parsing.** `Assert` components, and `filter`/`WHERE` steps that exist to reject bad rows, are quality gates — they migrate to **DQX** (a separate quality-gate task), not into the transform query. Note them here and translate them per `references/data-quality.md`; don't silently fold a reject-filter into the `SELECT`.
 
@@ -171,12 +172,15 @@ Confirm these interactively (propose defaults where one is genuinely sensible, e
 
 ```
 <bundle>/
+├─ README.md               # migration summary: translations + before/after DAG (see Step 5b)
 ├─ databricks.yml          # bundle name, variables, include:, targets
 ├─ resources/
 │  ├─ <job>.job.yml        # one file per Job (the orchestration)
 │  └─ <pipeline>.pipeline.yml   # only if a transformation needs Lakeflow
 └─ src/
-   ├─ setup/*.sql          # sql-executor + SQL-task transformations
+   ├─ setup/
+   │  ├─ 00_generate_source_data.py  # setup notebook: synthetic source data, run MANUALLY before first run — not a Job task (Step 5c)
+   │  └─ *.sql             # sql-executor + SQL-task transformations
    ├─ notebooks/*.py       # python-script / notebook tasks
    └─ dq/                  # only if the project has data-quality gates
       ├─ *.checks.yml      # DQX check definitions (metadata form)
@@ -193,11 +197,66 @@ Emit a DAB with:
 - a **pipeline** resource (its own `resources/*.yml` file) **only** for transformations that actually need Lakeflow (incremental/streaming) — most migrations emit none,
 - a **DQX notebook task** (with its `*.checks.yml`) for each data-quality gate — placed right after the task that produces the checked table, splitting valid rows from a quarantine table (see `references/data-quality.md`); emit none if the project has no `Assert`/reject logic and the user asks for no quality gates,
 - **bundle variables / job parameters** for the Matillion variables (see `references/variables.md`), so per-environment config and per-run inputs are parameterized rather than hardcoded,
-- **Databricks secret scopes** for every credential (see `references/secrets.md`) — referenced via `{{secrets/scope/key}}` / `dbutils.secrets.get` / a UC connection, never as a bundle variable or plaintext.
+- **Databricks secret scopes** for every credential (see `references/secrets.md`) — referenced via `{{secrets/scope/key}}` / `dbutils.secrets.get` / a UC connection, never as a bundle variable or plaintext,
+- a **`README.md` at the bundle root** documenting the migration (see Step 5b),
+- a **setup notebook** (`src/setup/00_generate_source_data.py`) the user runs **manually once** before the first run to fabricate any missing source/input tables with synthetic data for a test — kept out of the Job graph, guarded so it no-ops against real sources (see Step 5c).
 
-See the worked reference bundle in the repo at `examples/databricks-source/databricks/` — a `databricks.yml` + `resources/job.yml` + `src/` layout: an all-SQL-tasks-plus-one-notebook Job with no pipeline resource.
+See the worked reference bundle in the repo at `examples/databricks-source/databricks/` — a `databricks.yml` + `resources/job.yml` + `src/` layout: an all-SQL-tasks-plus-one-notebook Job with no pipeline resource. (The demo READMEs under `examples/*/README.md` model the generated-README shape below.)
+
+## Step 5b — Write the bundle's `README.md`
+
+Always emit a `README.md` at the bundle root so the migration is self-documenting — the reviewer/operator shouldn't have to reverse-engineer the source to understand what was produced. Keep it to the artifacts of *this* migration (don't restate the skill's general rules). Include these sections, in order:
+
+1. **Summary** — a short description of the **source Matillion project** (its name, what it does in business terms, the export format and source backend, and the jobs/transformations it contains) and a description of the **output** (this bundle: one Databricks Job with N tasks, whether any Lakeflow pipeline or DQX gate was needed).
+2. **Bundle layout** — a short tree of what was emitted (`databricks.yml`, `resources/`, `src/setup`, `src/notebooks`, `src/dq`, the setup notebook from Step 5c) with a one-line purpose per entry.
+3. **Orchestration overview — a *before/after* pair of Mermaid `flowchart`s.** Emit **both**:
+   - **Before** — the Matillion source graph: orchestration steps, and (as a second `subgraph`) the internal component chain of any transformation — every `table-input`/`join`/`aggregate`/`rewrite` node.
+   - **After** — the Databricks Job task graph: one node per task, labelled with its task type (SQL task / notebook / pipeline / DQX gate), edges mirroring `depends_on`.
+
+   The pair is required, not optional, because **consolidation is only visible in the contrast**: an after-DAG alone hides that (say) seven Matillion components collapsed into one SQL task. Put the diagrams side by side and make what merged obvious — draw the transformation's whole component subgraph in the *before*, a single `run_transformation` node in the *after*, and note "N components → 1 consolidated CTE query". Use the demo READMEs' before/after diagrams as the exact template (`flowchart TD` with a `subgraph` per Job/transformation; GitHub and the Databricks workspace both render Mermaid).
+4. **Key translations** — a table with one row per non-trivial mapping the reader would otherwise have to infer: each Matillion component/step → its Databricks target (task key + file), plus any dialect/shape change worth flagging (e.g. Snowflake `::`→`CAST`, `run-transformation`→consolidated SQL task, `Assert`→DQX gate, a dropped `GRANT`). Link the deeper rule to the relevant `references/*.md` rather than re-explaining it.
+5. **Variables** — every bundle variable / job parameter introduced, what it maps from (the Matillion source value), and its default — from the hardcoded-value sweep (`references/variables.md`, `references/hardcoded-values.md`).
+6. **Secrets** — every credential surfaced and the secret scope/key it must be read from at runtime; note that none are stored in the bundle (`references/secrets.md`). Include the ready-to-run `databricks secrets create-scope` + one `put-secret <scope> <key>` per credential (values prompted, never inline) that the user must run before the first run. Omit the section only if the project has no credentials.
+7. **Synthetic source data (test setup)** — describe the setup notebook (Step 5c): which source/input tables it fabricates (that the Matillion transforms read but no task produces), roughly what each contains (table → columns/row count/notable value ranges), that it's **synthetic stand-in data** generated with `dbldatagen`, and that it **only fills tables that don't already exist** — so where the real sources exist it no-ops and they're used instead. **State explicitly that the user must run this notebook by hand once before the first `bundle run`** — it is deliberately not a Job task, so nothing runs it automatically; skipping it means the Job fails at the first read (`TABLE_OR_VIEW_NOT_FOUND`) on a fresh workspace.
+8. **Deployment** — the config values to set (`catalog`, `schema`, `warehouse_id`, host) and the exact commands **in order**, with the manual step called out as required, not optional:
+   1. `databricks bundle deploy …`
+   2. **Manually run** the setup notebook `src/setup/00_generate_source_data.py` once (open it in the workspace, set the `catalog`/`schema` widgets, Run All) — **required** for a test run on a fresh workspace; skip *only* if the real source tables already exist.
+   3. `databricks bundle run …`
+
+   Match what Step 6 hands the user.
+9. **Post-migration checklist** — literal checkboxes for the manual steps a human must do. Include both the **test-run** step and the **production** steps:
+   - [ ] **Run `src/setup/00_generate_source_data.py` by hand** before the first `bundle run` (for a test on a fresh workspace) — it's not a Job task, so nothing runs it for you.
+   - [ ] fill in real `workspace.host` per target, supply the real `warehouse_id`
+   - [ ] create the secret scopes and grant READ
+   - [ ] for production: ensure the **real** source tables exist (then the synthetic setup notebook is skipped)
+   - [ ] review anything translated by intent (Matillion-runtime `python-script`, Snowpark procedures — see Step 5c and `references/snowflake-sql.md`)
+   - [ ] run the validation checklist
+10. **Sources** — the list of Matillion source files this bundle was generated from (e.g. `matillion/acme_sales.json`, or each `*.orch.yaml`/`*.tran.yaml`), so the migration is traceable back to its input.
+
+Emit the Mermaid node labels and every table row from the *actual* graph and values you produced, not a template — a wrong DAG or a wrong variable list is worse than none.
+
+## Step 5c — Emit a setup notebook (synthetic source data, manual pre-step)
+
+The migrated Job reads whatever tables the Matillion transforms read — often **source/input tables the pipeline didn't create itself** (a Snowflake `RAW.*` schema, an ingestion landing table). On a fresh workspace those don't exist, so the Job fails at the first read (`TABLE_OR_VIEW_NOT_FOUND`) until the sources are in place. To let a reviewer run the converted project for a quick test, emit a **setup notebook** that creates and populates those input tables with **synthetic data**.
+
+- **It's a manual pre-setup step the user runs once — NOT a task in the Job.** Emit `src/setup/00_generate_source_data.py` as a standalone Databricks **notebook** (`# Databricks notebook source` first line) and keep it **out of the Job's task graph** — don't add it as a task or a `depends_on`. The user runs it themselves before the first `bundle run` (document this in the README's deployment steps + post-migration checklist). Keeping it out of the pipeline means the production Job never fabricates data as a side effect.
+- **Guard every write with existence checks.** Use `CREATE TABLE IF NOT EXISTS` (or check the catalog and skip when the table is present) so running the notebook against a workspace that already has the real source tables no-ops instead of clobbering them, and re-running is idempotent.
+- **Identify the inputs to create:** every table a transform reads (a source/read node — no incoming connectors) that **no task in the Job produces** is a source input to fabricate.
+- **Get each table's columns from the source, don't infer them.** In the classic JSON format a read node lists exactly which columns it selects — parse the **`Column Names`** parameter of each source/read node (and the `join`'s `Output Columns` / read-node projections) to get the precise column list per source table. This is far more reliable than reverse-engineering columns from downstream usage across many transformations; fall back to downstream inference (which columns are cast/joined/selected) only for a column the read node doesn't enumerate. Types can stay loose (the demo sources use `STRING` and the transforms `CAST`), but the **column set** should come from the source's own `Column Names`.
+- **Generate with `dbldatagen`** (use the `databricks-data-generation` skill for the full API). Start the notebook with `%pip install dbldatagen` — it is **not** available on serverless or vanilla clusters (only some DBR ML images), so don't assume it's pre-installed. Notebook shape: `%pip install`, then `catalog`/`schema` via widgets, `CREATE SCHEMA IF NOT EXISTS`, then per source table a skip-if-exists guard populated by one `dg.DataGenerator(...).build()` written with `.saveAsTable()`. Set `partitions` explicitly, and **align key ranges**: `dbldatagen`'s implicit `id` is **0-based**, so a PK built from `id` must be offset (`id + 1`) to match 1-based foreign keys — otherwise the transform's joins silently drop rows. Keep each child FK's range a subset of its parent PK range, and use a fixed `randomSeed` for reproducibility.
+- **Make clear it's synthetic and a test convenience.** A header comment must state the notebook fabricates stand-in data for a test run, is run manually (not part of the Job), skips tables that already exist, and that for production the real ingestion should populate these tables instead. The README's synthetic-data section (Step 5b) documents what it creates; the deployment steps and post-migration checklist must tell the user to run it first for a test.
+
+`references/snowflake-sql.md` explains why source tables are often external (the Snowflake `RAW.*` assumption). The two repo demos instead seed tiny fixtures inline in their first SQL task — a simpler equivalent when the data is trivial and you don't mind it running each time.
 
 ## Step 6 — Deploy and validate
+
+**The deployment procedure has three ordered steps — the manual setup-notebook run is part of it, not an afterthought:**
+
+1. **Deploy** the bundle — `databricks bundle deploy` with the config `--var`s (below).
+2. **Run the setup notebook** `src/setup/00_generate_source_data.py` **once, manually** (open it, set the `catalog`/`schema` widgets, Run All — or `databricks jobs submit` a one-off notebook task). This creates the synthetic source tables the Job reads. **Required for a test run on a fresh workspace** — the notebook is deliberately not a Job task, so nothing runs it automatically, and a `bundle run` without it fails at the first read (`TABLE_OR_VIEW_NOT_FOUND`). Skip this step *only* when the real source tables already exist.
+3. **Run** the Job — `databricks bundle run <job>`.
+
+Whoever performs these steps depends on where you (the agent) are running — but always present all three, in order, and flag step 2 as required.
 
 **Deploying runs the Databricks CLI (`databricks bundle deploy`) — there is no SDK/REST equivalent. Who runs it depends on where you (the agent) are running:**
 

@@ -51,6 +51,80 @@ GROUP BY category, region_name;
 
 **Middle ground — lineage without the storage cost:** declare the intermediates as non-materialized `VIEW`s (`CREATE OR REFRESH VIEW`) and materialize only the target. You keep per-step nodes in the pipeline graph and can inspect them, but Lakeflow doesn't persist them.
 
+## Multiple sinks — one output per write node
+
+The consolidation above assumes a **single** output. Real transformations often have
+**several sink nodes** (several write components — recall a sink is any node with incoming
+but no outgoing connectors; see `references/classic-json-format.md` for why the role is
+position-, not type-, dependent). When there are N sinks, emit **one
+`CREATE OR REPLACE TABLE` per sink**, each fed by the branch of the DAG that flows into it:
+
+- **Notebook task** — natural: one `spark.sql("CREATE OR REPLACE TABLE ... AS ...")` call
+  per sink, in dependency order. Shared upstream branches become temp views (next section)
+  so they're computed once and reused by multiple sinks.
+- **SQL task** — chain the statements in one `.sql` file, in order (shared upstream as a
+  `CREATE OR REPLACE TEMP VIEW` first, then each target `CREATE OR REPLACE TABLE`).
+
+Don't force a genuinely multi-output transformation into one statement — that's the mirror
+of over-consolidation: keep each real output its own table.
+
+## What decides consolidation: DAG *shape*, not component count
+
+The signal for "one CTE query vs. temp-view-per-component" is **the shape of the DAG, not
+its size**. A long chain is still one query; a small diamond may need temp views.
+
+- **Linear chain (each component feeds exactly one downstream) → one CTE query, regardless
+  of length.** A 33-component chain still consolidates to a single
+  `CREATE OR REPLACE TABLE ... AS WITH … SELECT` — one CTE per component, in order. Length
+  is not a reason to split; real migrations have consolidated 30+ linear components into one
+  query. This runs fine as a SQL task or inside a notebook.
+- **Diamond / fan-out (a component's output feeds *two+* downstream components that later
+  re-join), or multiple sinks → temp views.** A CTE can't be referenced twice without being
+  recomputed, and you can't cleanly express two outputs in one statement. Use a **notebook**
+  that emits one `CREATE OR REPLACE TEMP VIEW` per shared/branch component (computed once,
+  reused by each consumer), then the sink(s) write tables.
+
+So the test is: *does any component have more than one outgoing edge into paths that
+reconverge, or are there multiple sinks?* If no → CTEs. If yes → temp views for the shared
+nodes.
+
+```python
+# diamond DAG: `base` feeds two branches that re-join -> materialize base once as a temp view
+spark.sql("CREATE OR REPLACE TEMP VIEW base AS SELECT ... FROM src")          # shared node
+spark.sql("CREATE OR REPLACE TEMP VIEW branch_a AS SELECT ... FROM base ...")
+spark.sql("CREATE OR REPLACE TEMP VIEW branch_b AS SELECT ... FROM base ...")
+spark.sql(f"CREATE OR REPLACE TABLE {catalog}.{schema}.final AS "
+          "SELECT ... FROM branch_a JOIN branch_b USING (k)")
+```
+
+Temp views are session-scoped and unmaterialized (no storage, dropped at session end), so
+this preserves per-component lineage and avoids recomputing shared branches. A transform
+that's purely linear needs none of this no matter how many components it has — reach for
+temp views only for the reconvergence/multi-sink cases. See
+`references/orchestration/run-transformation.md` for SQL-task vs. notebook.
+
+## Repeated sub-graphs across transformations — extract, don't duplicate
+
+Real projects often repeat an **identical sub-graph in several transformations** — e.g. a
+staff/org-structure lookup (dedupe a dimension by `full_name` via `ROW_NUMBER`, again by
+`alt_name`, `LEFT JOIN` both, `COALESCE`, derive a key, fill unmatched with fallbacks)
+appearing in 5 of 11 transformations. Translating it independently each time copies ~40
+lines of identical CTE logic into every output — a maintenance trap (fix a bug in one, miss
+the other four).
+
+**Extract the shared logic once and reuse it:**
+- **Materialize it as a shared table/view** the transforms read — a `CREATE OR REPLACE VIEW
+  <catalog>.<schema>.staff_structure AS …` in its own setup step (or a small Lakeflow MV if
+  it's genuinely reused and worth maintaining incrementally), then each transform just joins
+  to it. Best when several *separate* Jobs/tasks need it.
+- **Or a shared source file** — put the sub-query in `src/shared/staff_structure.sql` and
+  have each SQL task `include` / each notebook read it, so the CTE is defined in one place.
+
+Recognize it while parsing (Step 3): if the same component chain — same inputs, same
+dedupe/join/`COALESCE` shape — recurs across transformations, flag it as a shared
+component and emit it once. This is the transformation-level counterpart of "give a
+component its own dataset when it's **reused**" above.
+
 > Migration tip: during initial cutover it's fine to emit the 1:1 mapping so each dataset cross-references its Matillion component for validation. Once outputs are reconciled against the source, consolidate. **Note:** Lakeflow does not drop datasets you remove from a pipeline — after consolidating, manually `DROP` the now-orphaned intermediate MVs or they linger in the schema.
 
 ## Worked example (from sales-by-category-region.tran.yaml)

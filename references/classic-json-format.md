@@ -85,12 +85,16 @@ hint. Common mappings seen in real exports:
 |---|---|---|---|
 | `444132438` | `Start` | `start` | `orchestration/start-end.md` |
 | `-1946388514` | `Name` | `end-success` | `orchestration/start-end.md` |
+| `515156205` | `Name` | `end-failure` | `orchestration/start-end.md` (→ failure-condition terminal, or just the Job's failure state) |
+| `-1343684451` | `Name` | `and`/`or` gate (convergence) | usually **collapses** — see the failure-counting pattern below |
 | `-798585337` | `Name`, `SQL Script` | `sql-executor` | `orchestration/sql-executor.md` |
 | `-1773186829` | `Name`, `Script`, `Interpreter`, `Timeout`, `User` | `python-script` | `orchestration/python-script.md` |
 | `1785813072` | `Name`, `Orchestration Job`, …, `Set Scalar/Grid Variables` | `run-orchestration` | `orchestration/run-orchestration.md` |
 | `1896325668` | `Name`, `Transformation Job`, …, `Set Scalar/Grid Variables` | `run-transformation` | `orchestration/run-transformation.md` |
-| `-1266674941` / `-1032749985` | `Name`, `SQL Query`, … | query → scalar / table | `orchestration/sql-executor.md` |
-| `1006021671` | `Name`, `Incoming Webhook URL`, `Payload …` | API/webhook step | (side effect → notebook task) |
+| `-1266674941` / `-1032749985` | `Name`, `SQL Query`, … | query → scalar / table (also seen splitting rows via `LATERAL VIEW explode`) | `orchestration/sql-executor.md` |
+| `1744268877` | `Name`, `Columns` | distinct | `transformation/aggregate.md` (`SELECT DISTINCT`) |
+| `1838652813` | `Name`, `Conversions` | convert-type | `transformation/rewrite-table.md` (`CAST` in the projection) |
+| `1006021671` | `Name`, `Incoming Webhook URL`, `Payload …` | API/webhook step | `orchestration/webhook.md` |
 | `335239555` | `Name`, `Target Table`, `Database`, `Schema`, `Warehouse`, `Order By` | `table-input` | `transformation/table-input.md` |
 | `-629958239` | `Name`, `Main Table`, `Main Table Alias`, `Joins`, `Join Expressions`, `Output Columns` | `join` | `transformation/join.md` |
 | `1701703136` | `Name`, `Groupings`, `Aggregations`, `Grouping Type` | `aggregate` | `transformation/aggregate.md` |
@@ -102,9 +106,39 @@ hint. Common mappings seen in real exports:
 | `-1841822228` | `Name`, `Method`, `Cast Types`, … | unite/convert-type | `transformation/join.md` (UNION) |
 | `-1935486466` | `Name`, `Grouping Columns`, `Ordering within partitions`, … | rank/window | `transformation/aggregate.md` (window fn) |
 
-If you hit an `implementationID` not in this table, **identify it by its parameter-name
-signature** and the component's SQL/behavior, map it to the closest documented Matillion
-component, and flag it in the migration notes so the table can be extended.
+**This table is not exhaustive — expect to hit IDs not listed here** (real projects use
+dozens of component types). When you do, **don't guess from the number**: dump the
+component's `parameters[].name` list and match by *signature* + its SQL/behavior to the
+closest Matillion component, then translate that. A quick way to enumerate what a project
+uses:
+
+```python
+sigs = {}
+for jl in ("orchestrationJobs", "transformationJobs"):
+    for job in export[jl]:
+        for c in job.get("components", {}).values():
+            sigs.setdefault(c["implementationID"],
+                            tuple(p["name"] for p in c["parameters"].values()))
+for impl, names in sorted(sigs.items()):
+    print(impl, names)   # match each against the table above by its param-name signature
+```
+
+Flag any you had to infer in the migration notes so the table can be extended.
+
+### In a transformation, the component's ROLE is position-dependent, not type-fixed
+
+**A component's source-vs-sink role in a transformation is set by its DAG position (its
+connectors), not by its `implementationID`.** The names in the table above ("table-input",
+"table output") describe the *typical* role, but the same impl plays the opposite role
+depending on wiring — confirmed common in real exports (28 `rewrite`-as-read and 18
+`table-input`-as-write in one project):
+
+| Component | With **no incoming** connectors | With **incoming** connectors |
+|---|---|---|
+| `rewrite`/table-output (`1354890871`) | acts as a **table read** — `SELECT <Column Names> FROM <Database.Schema.Target Table>` (a *source* feeding the DAG) | acts as a **table write** — `CREATE OR REPLACE TABLE … AS <upstream>` (a *sink*) |
+| `table-input` (`335239555`) | acts as a **table read** (the usual case) — `FROM <Database.Schema.Target Table>` | acts as a **table write** — writes its input to `Target Table` (a *sink*) |
+
+The JSON even encodes this: a read node has `inputCardinality: ZERO` / `outputCardinality: MANY`, a write node the reverse — but **derive the role from the connector graph**, not the name. Concretely: **a node with no incoming edges is a source (read); a node with no outgoing edges is a sink (write).** Get this wrong and you invert the whole dataflow. See `references/transformation/rewrite-table.md` for multi-sink handling.
 
 ## Reading a component's parameters (slots)
 

@@ -9,8 +9,12 @@
 #
 # Every step is a SQL task (pure full-refresh SQL, no Lakeflow features). catalog/schema
 # ride along as SQL task parameters (bound to :catalog / :schema in each .sql via
-# USE ... IDENTIFIER()), so the namespace is never hardcoded. The extra 01_seed_raw task
-# only exists to make the demo self-contained (see that file's header).
+# USE ... IDENTIFIER()), so the namespace is never hardcoded.
+#
+# The Job reads source tables (products_src / regions_src / sales_src) that the Snowflake
+# source assumed already existed (its RAW.* schema). They are NOT created by this Job. For
+# a standalone test, run `src/setup/00_generate_source_data.py` by hand first — it is a
+# manual pre-step, deliberately NOT a task here, so the production Job never fabricates data.
 resources:
   jobs:
     load_sales_summary_job:
@@ -21,20 +25,8 @@ resources:
         - name: schema
           default: ${var.schema}
       tasks:
-        # Demo-only: seed the RAW.* fixtures the Snowflake source assumed already existed.
-        - task_key: seed_raw
-          sql_task:
-            warehouse_id: ${var.warehouse_id}
-            parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-            file:
-              path: ../src/setup/01_seed_raw.sql
-
-        # sql-executor "Create Dimension Tables" -> SQL task
+        # sql-executor "Create Dimension Tables" -> SQL task (first task; creates the schema).
         - task_key: dimension_tables
-          depends_on:
-            - task_key: seed_raw
           sql_task:
             warehouse_id: ${var.warehouse_id}
             parameters:

@@ -30,16 +30,27 @@ things you already know:
 > ```bash
 > databricks workspace export-dir "<workspace path>" ./migrated-bundle
 > cd ./migrated-bundle
+> # 1. Deploy
 > databricks bundle deploy -t dev --profile <profile> \
 >   --var="catalog=<catalog>" \
 >   --var="schema=<schema>" \
 >   --var="warehouse_id=<warehouse_id>"
+> # 2. REQUIRED for a test run — create synthetic source tables by running the setup
+> #    notebook once (it is NOT a Job task). Skip only if the real source tables exist.
+> #    Open src/setup/00_generate_source_data.py, set the catalog/schema widgets, Run All.
+> # 3. Run the Job
 > databricks bundle run <job_name> -t dev --profile <profile> \
 >   --var="catalog=<catalog>" --var="schema=<schema>" --var="warehouse_id=<warehouse_id>"
 > ```
 > (The `dev` target's `workspace.host` is a placeholder — set it to your workspace URL in
 > `databricks.yml`, or ensure your `--profile` points there.) Tell me once it's deployed
 > and I'll run the validation checks.
+
+**Between deploy and run, the setup notebook must be run once** (step 2 above) unless the
+real source tables already exist — it populates the source/input tables the Job reads
+(`src/setup/00_generate_source_data.py`, a manual step, not a Job task). Skipping it makes
+the first `bundle run` fail at the first read with `TABLE_OR_VIEW_NOT_FOUND`. See
+`SKILL.md` → Step 5c/Step 6.
 
 Fill every `--var` with the value the user confirmed in Step 5. `warehouse_id` has no
 default and **must** be supplied — omitting it is the most common deploy failure. If they
@@ -72,8 +83,20 @@ after the user confirms the deploy succeeded.
 
 Grant the pipeline/job's principal UC access (`USE CATALOG`, `USE SCHEMA`, `SELECT`/`MODIFY`) before the first run, or tasks fail with permission errors. The databricks-resource-deployment skill covers the grant pattern.
 
-If the migration uses secrets (`references/secrets.md`), also grant the run-as principal `READ` on the secret scope(s), or any task that calls `dbutils.secrets.get` / `{{secrets/...}}` fails at runtime:
+If the migration uses secrets (`references/secrets.md`), the scope and its keys must exist
+**before** the first run (a task calling `dbutils.secrets.get` / `{{secrets/...}}` fails at
+runtime otherwise), and the run-as principal needs `READ`. Emit these in the README's
+deployment steps, one `put-secret` per credential surfaced in the hardcoded-value sweep:
 
 ```bash
+# create the scope + populate each secret (e.g. a webhook URL, a source-DB password)
+databricks secrets create-scope matillion_migration
+databricks secrets put-secret matillion_migration webhook_url        # prompts for the value
+databricks secrets put-secret matillion_migration snowflake_password
+
+# grant the job's run-as principal READ on the scope
 databricks secrets put-acl matillion_migration <run-as-principal> READ
 ```
+
+Never bake the secret values into these commands or the README — `put-secret` prompts for
+the value (or reads a file); the committed docs show only key names.

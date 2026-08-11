@@ -97,6 +97,8 @@ Only the idioms actually seen in real exports are listed; search the SQL for oth
 | `LISTAGG(...)` | `array_join(collect_list(...), sep)` or `concat_ws` | check ordering semantics |
 | `LATERAL FLATTEN(input => arr)` | `LATERAL VIEW explode(arr)` / `explode()` | for VARIANT/array unnesting |
 | `VARIANT` / `OBJECT` / `PARSE_JSON` | `VARIANT` (or `STRING` + `from_json`/`:` access) | Databricks has a native `VARIANT` type; simple cases can stay `STRING` |
+| `SNOWFLAKE.CORTEX.AI_COMPLETE(model, prompt)` / `COMPLETE(...)` | `ai_query('<endpoint>', prompt)` (or `ai_gen(prompt)` for a quick default) | Cortex LLM calls → Databricks AI Functions. `ai_query` targets a served model/FM API endpoint; the Snowflake `model` string maps to your chosen endpoint, not 1:1. |
+| `SNOWFLAKE.CORTEX.SENTIMENT/SUMMARIZE/TRANSLATE/EXTRACT_ANSWER` | `ai_analyze_sentiment` / `ai_summarize` / `ai_translate` / `ai_extract` | Databricks has task-specific AI SQL functions mirroring each Cortex task |
 | `` "Quoted UPPER" `` identifiers | `` `back-ticked` `` / unquoted | see below |
 | `NUMBER(38,0)` DDL type | `DECIMAL(38,0)` or `BIGINT` | |
 | sequences / `seq.NEXTVAL` | `GENERATED ALWAYS AS IDENTITY` column | model as a Delta identity column |

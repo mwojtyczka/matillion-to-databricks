@@ -59,6 +59,28 @@ These are the *pieces* of one consolidated query (CTEs / SELECT clauses), not se
 | `run-transformation` | Job SQL task (default) / notebook / pipeline task | `orchestration/run-transformation.md` |
 | `run-orchestration` | Job `run_job_task` (nested Job) | `orchestration/run-orchestration.md` |
 | `python-script` | Job notebook/SQL task | `orchestration/python-script.md` |
+| webhook / API step (Teams/Slack notify) | notebook task (`requests.post`, URL from a secret) | `orchestration/webhook.md` |
+| `end-failure`, `and`/`or` gate | *(usually no task)* — Job failure state / default gating; see failure-counting pattern below | `orchestration/start-end.md` |
+
+## Common orchestration patterns
+
+### Failure-counting → notification (`v_failures`)
+
+A near-ubiquitous Matillion idiom: every step routes its **failure** connector to a
+"query-to-scalar" step that increments a `v_failures` variable, all paths converge (via
+an `and`/`or` gate), then an `If v_failures = 0` branches to a success vs. failure
+notification. **Don't port the counter machinery** — Databricks task state already tracks
+success/failure. Translate the whole pattern to:
+
+| Matillion | Databricks |
+|---|---|
+| per-step `failure` connector → increment `v_failures` | **eliminated** — no failure handler tasks, no counter (Job task state already tracks success/failure) |
+| `unconditional` connectors chaining steps regardless of failure | downstream task uses **`run_if: ALL_DONE`**, so it runs even if an upstream dependency failed |
+| the `and`/`or` gate that waits for all paths | **collapses** — the notification task just `depends_on` all the steps it should wait for |
+| `If v_failures = 0` → success notification | success task with **`run_if: ALL_SUCCESS`** |
+| `If v_failures > 0` → failure notification | failure task with **`run_if: AT_LEAST_ONE_FAILED`** |
+
+The notifications themselves are usually webhook steps — see `orchestration/webhook.md`.
 
 ## Data quality (cross-cutting)
 
@@ -104,3 +126,5 @@ Don't carry any literal across blindly. Sweep every component param + inline SQL
 - **Consolidate the transformation chain**: a linear chain producing one output → **one query with CTEs**, not one dataset per component. Target is `CREATE OR REPLACE TABLE ... AS` (SQL task) or `CREATE OR REFRESH MATERIALIZED VIEW` (if Lakeflow). Full-overwrite (`rewrite-table-dl`) = full refresh; append-only incremental → streaming table (Lakeflow). Give a component its own dataset only if it's reused, branches, or needs its own quality gate. See `transformation/rewrite-table.md`.
 - **Keep one task per Matillion step** — choose the task type, don't collapse the Job graph into a single task.
 - Nested orchestration: `run_job_task` when the child is reused across parents; inline the child's tasks when it's called from only one place.
+- **Emit a bundle `README.md`** documenting the migration — source summary, bundle layout, a **before/after** Mermaid DAG (so consolidation is visible), translations table, variables, secrets, synthetic-data summary, deploy commands, post-migration checklist, source list. See `SKILL.md` → Step 5b.
+- **Emit a setup notebook** (`src/setup/00_generate_source_data.py`) — a **manual pre-step**, kept out of the Job graph, that the user runs once to fabricate any missing source/input tables with synthetic data (`dbldatagen`) for a test run; `IF NOT EXISTS` guards mean it no-ops against real sources. See `SKILL.md` → Step 5c.
