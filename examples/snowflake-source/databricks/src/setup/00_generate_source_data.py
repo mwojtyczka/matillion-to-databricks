@@ -21,6 +21,12 @@
 
 # COMMAND ----------
 
+# Restart Python so the freshly installed dbldatagen is importable in this session.
+# This must run BEFORE any widgets/imports below — restarting clears notebook state.
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
 # Defaults MUST match the bundle variables in databricks.yml (catalog=main, schema=sales)
 # so a default-run test seeds the same namespace the Job reads. If you override them at
 # deploy/run time, pass the SAME values to this notebook's widgets.
