@@ -20,6 +20,11 @@ ship.
 SRC="src"
 ```
 
+**Scan `.py` notebooks too, not just `.sql` files.** Every SQL dialect check below applies
+equally to SQL embedded in notebook `spark.sql("…")` strings — the same overwrite,
+double-quote, `datediff`, and lateral-alias bugs ship inside notebooks and are missed if you
+only grep `src/sql/`. `$SRC="src"` covers both; don't narrow it.
+
 ## SQL dialect (non-Databricks source → Databricks) — `references/snowflake-sql.md`
 
 - [ ] **Double-quoted identifiers** → backticks. `grep -rnE '"[A-Z_][A-Z0-9_]*"' $SRC` — inside SQL these are string literals on Databricks and fail (`Syntax error at or near '"X"'`). Must be `` `X` ``. (Exclude Python/widget strings.)
@@ -36,10 +41,26 @@ SRC="src"
 - [ ] **`SNOWFLAKE.CORTEX.*` / `ai_generate_text`** → `ai_gen` / `ai_query` (note: `ai_generate_text` is notebook-only, fails in a SQL warehouse task).
 - [ ] **`UNION` branches align** — every branch selects the same columns in the same order (pad missing metrics with `CAST(0 AS BIGINT)`/`NULL`). `grep -rniE 'UNION ALL' $SRC`.
 
+## Half-translated components — the "gave up but shipped it anyway" class
+
+**The single most dangerous failure: a component the generator couldn't translate, emitted
+as a literal placeholder, and left in the file.** Every one is a guaranteed parse/analysis
+error, and they cluster in the hardest transforms (multi-step joins, aggregates, filters).
+A transform is **not done** until zero of these remain — a leftover marker means that
+component was never actually translated, so re-derive it from the source component, don't
+just delete the marker.
+
+- [ ] **No `TODO` / `translate` / `unknown_` markers.** `grep -rniE 'TODO|/\* *translate|unknown_[0-9-]+' $SRC` — the generator writes these when it can't handle a component. Each one is an untranslated component; translate it properly.
+- [ ] **No empty filter predicates.** `grep -rnE 'WHERE\s*(/\*|$|\))' $SRC` — a `WHERE /* TODO: \`AND\` */` (or bare `WHERE`) means a Matillion **filter** component's condition was dropped. Recover the predicate from the source `filter`/`WHERE` slot.
+- [ ] **No empty/placeholder aggregates.** `grep -rnE '\(`Group By`\)|AS ``|GROUP BY\s*$' $SRC` — `(\`Group By\`) AS \`\`` is an untranslated **aggregate** component: fill in the real grouping keys and aggregate expressions (`COUNT(...)`, `SUM(...)`) from the source.
+- [ ] **No untranslated join conditions.** `grep -rniE '= *[a-z]\.(Left|Right|Inner|Outer)\b|ON .*\b(Left|Inner)\b' $SRC` — `ON l.X = r.Left` means a **join** component's key mapping wasn't translated; write the real `ON a.key = b.key`.
+- [ ] **No doubled alias prefixes.** `grep -rnE '`[a-z]\.[A-Za-z_]+\.' $SRC` — `r.\`r.RISK_ID\`` (alias baked *into* the backticked name) is a broken column reference; it must be `r.\`RISK_ID\``.
+- [ ] **`decode(...)` translated** → `CASE`/`map`. `grep -rniE '\bdecode\(' $SRC` — Snowflake/Oracle `decode` isn't Databricks SQL.
+
 ## Matillion leftovers
 
 - [ ] **No `$T{…}` / `${…}` placeholders** in emitted SQL. `grep -rnE '\$T?\{' $SRC` — inter-component/variable refs must be resolved to a view/table name or a `:param`.
-- [ ] **`${var}` not used inside `.sql` files** — SQL tasks read params via `IDENTIFIER(:name)` + `USE`, not `${var}` (which doesn't interpolate). `grep -rnE '\$\{' $SRC`.
+- [ ] **`${var}` not used inside `.sql` files — this includes `${catalog}.${schema}.TABLE` namespaces.** SQL tasks do **not** interpolate `${var}` (`[PARSE_SYNTAX_ERROR] at or near '$'`); a `.sql` file with `CREATE TABLE ${catalog}.${schema}.T` fails on every run. `grep -rnE '\$\{' $SRC`. Fix: reference each object as `IDENTIFIER(:catalog || '.' || :schema || '.TABLE_NAME')` and pass `catalog`/`schema` (plus any extra namespaces like `catalog_adl`, `schema_mgmt`) as the SQL task's `parameters:`. `USE CATALOG/SCHEMA IDENTIFIER(:x)` works only when there's a **single** namespace; a transform that reads from several (main data + org-structure + mgmt) needs the per-object `IDENTIFIER(:cat || '.' || :sch || '.T')` form.
 
 ## DAB structure — `references/dab-gotchas.md`
 

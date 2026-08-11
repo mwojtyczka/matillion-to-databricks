@@ -332,6 +332,21 @@ Then fill it in per these rules:
 
 Before deploying, **run every item in `references/verification-checklist.md` against the generated bundle** and fix each finding. This is a required gate, not a nicety: it converts the dialect/DAB/setup gotchas scattered across the references into a concrete, greppable pass, and it is the step that catches the silent SQL bugs (`"quoted"` identifiers, `SELECT *,x AS existing`, `UPDATE…FROM`, `datediff(unit,…)`, `UNION` misalignment, unresolved `$T{}` placeholders, missing setup columns, …) that otherwise only surface as run-time task failures one at a time. If you can run the CLI, also run `databricks bundle validate -t dev`. Don't present the bundle as complete until this passes.
 
+**First and most important: a transform is only "translated" when every component in it is.** The
+worst — and easiest to ship — failure is a component you couldn't translate that gets emitted
+as a literal placeholder and left in the file: `WHERE /* TODO: \`AND\` */` (dropped filter),
+`(\`Group By\`) AS \`\`` (unresolved aggregate), `ON l.X = r.Left`/`r.Inner` (untranslated join
+keys), `r.\`r.RISK_ID\`` (doubled alias), `/* TODO: translate unknown_… */`. These cluster in
+the hardest transforms (multi-step joins/aggregates), so the temptation is to emit the easy 80%
+and placeholder the rest — **don't.** Each marker is a guaranteed parse/analysis failure and
+means that component was never translated; re-derive it from the source component (grep the
+markers in `references/verification-checklist.md` → "Half-translated components"). Never hand off
+or deploy a bundle that still contains one. Also: `${catalog}.${schema}.TABLE` does **not**
+interpolate inside a `.sql` SQL task (`PARSE_SYNTAX_ERROR at or near '$'`) — use
+`IDENTIFIER(:catalog || '.' || :schema || '.TABLE')` and pass the namespace parts as the task's
+`parameters:`. And run the dialect greps over notebook `.py` files too, not only `src/sql/` —
+the same overwrite/quote/`datediff` bugs hide inside `spark.sql("…")` strings.
+
 **If you can execute (Genie in-workspace, or CLI), don't stop at static checks — actually run it green.** The grep checklist catches the known classes, but the definitive test is execution. When you have a workspace to run against: run the setup notebook (Step 5c), deploy, then run the Job, and **fix each task failure and re-run until the whole Job is green** — that is the loop that surfaces the SQL-translation and data-shape bugs no static scan can. Only claim the migration works if you've *seen* it run (or you've told the user you couldn't execute and they must verify). "Generated and grep-clean" is weaker than "ran green" — reach the latter whenever you can.
 
 ## Step 6 — Deploy and validate
