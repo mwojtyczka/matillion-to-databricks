@@ -93,15 +93,57 @@ Only the idioms actually seen in real exports are listed; search the SQL for oth
 | `NVL(a, b)` / `NVL2` | `coalesce(a, b)` / `IF` | `NVL` works but `coalesce` is idiomatic |
 | `QUALIFY <window predicate>` | `QUALIFY …` | **supported on Databricks SQL** — carries over unchanged |
 | `CURRENT_TIMESTAMP()` | `current_timestamp()` | fine; Databricks also accepts no parens |
-| `TO_VARCHAR(x)` / `TO_NUMBER(x)` | `CAST(x AS STRING)` / `CAST(x AS ...)` | |
+| `TO_VARCHAR(x)` / `TO_NUMBER(x, p, s)` | `CAST(x AS STRING)` / `CAST(x AS DECIMAL(p,s))` | `TO_NUMBER`'s precision/scale args become the `DECIMAL(p,s)` in the CAST |
+| `TO_CHAR(x)` (1-arg, no format) | `CAST(x AS STRING)` | Databricks `to_char` **requires** a format arg (`WRONG_NUM_ARGS`); for a plain string conversion use `CAST`. `TO_CHAR(x, fmt)` → `to_char(x, fmt)` |
+| `REGEXP_SUBSTR(col, pat, 1, 1, 'i')` | `regexp_extract(col, pat, 0)` | Snowflake's trailing position/occurrence/flag args have no Databricks equivalent — drop them; `regexp_extract`'s 3rd arg is the capture-group index (0 = whole match) |
+| `regexp_replace(col, pat, repl, 1, 0, 'i')` | `regexp_replace(col, pat, repl)` | drop the Snowflake position/occurrence/flag trailing args |
+| regex backreferences `\1`, `\2` (in a replacement) | `$1`, `$2` | Databricks uses `$N`, not `\N`; and an apostrophe inside a SQL literal is `''`, not `\'` |
 | `LISTAGG(...)` | `array_join(collect_list(...), sep)` or `concat_ws` | check ordering semantics |
+| `SPLIT_TO_TABLE(col, sep)` (in `LATERAL`) | `LATERAL VIEW explode(split(col, sep)) AS value` | Snowflake table function → Databricks `explode(split(...))`; the exploded column is aliased (`AS value`) |
+| `SPLIT_PART(col, sep, n)` | `split_part(col, sep, n)` | **carries over unchanged** (Databricks has `split_part`, 1-indexed, same semantics) |
+| `DATEDIFF(day, start, end)` / `DATEDIFF('day', …)` | `datediff(end, start)` | Databricks `datediff(endDate, startDate)` takes **no unit arg** and returns days; drop the `day` part and swap to (end, start) order. For other units use `datediff(unit, start, end)` **only** via the 3-arg TIMESTAMP variant, or `months_between`/arithmetic |
+| `DATEADD(day, n, d)` | `date_add(d, n)` / `d + INTERVAL n DAY` | similar — no leading unit arg in `date_add` |
 | `LATERAL FLATTEN(input => arr)` | `LATERAL VIEW explode(arr)` / `explode()` | for VARIANT/array unnesting |
 | `VARIANT` / `OBJECT` / `PARSE_JSON` | `VARIANT` (or `STRING` + `from_json`/`:` access) | Databricks has a native `VARIANT` type; simple cases can stay `STRING` |
-| `SNOWFLAKE.CORTEX.AI_COMPLETE(model, prompt)` / `COMPLETE(...)` | `ai_query('<endpoint>', prompt)` (or `ai_gen(prompt)` for a quick default) | Cortex LLM calls → Databricks AI Functions. `ai_query` targets a served model/FM API endpoint; the Snowflake `model` string maps to your chosen endpoint, not 1:1. |
+| `SNOWFLAKE.CORTEX.AI_COMPLETE(model, prompt)` / `COMPLETE(...)` | `ai_query('<endpoint>', prompt)` or `ai_gen(prompt)` | Cortex LLM calls → Databricks AI Functions. **In a SQL warehouse task use `ai_gen` / `ai_query`** — `ai_generate_text` is **notebook/interactive-only** and errors in a SQL task (`AI function ai_generate_text is only available in Interactive…`). `ai_query` targets a served/FM endpoint; the Snowflake `model` maps to your chosen endpoint, not 1:1. |
 | `SNOWFLAKE.CORTEX.SENTIMENT/SUMMARIZE/TRANSLATE/EXTRACT_ANSWER` | `ai_analyze_sentiment` / `ai_summarize` / `ai_translate` / `ai_extract` | Databricks has task-specific AI SQL functions mirroring each Cortex task |
 | `` "Quoted UPPER" `` identifiers | `` `back-ticked` `` / unquoted | see below |
 | `NUMBER(38,0)` DDL type | `DECIMAL(38,0)` or `BIGINT` | |
+| `CAST(x AS VARCHAR)` (no length) | `CAST(x AS STRING)` | bare `VARCHAR` fails on Databricks (`DATATYPE_MISSING_SIZE` — needs `VARCHAR(n)`); use `STRING`. Same for `CHAR`/`TEXT`. |
 | sequences / `seq.NEXTVAL` | `GENERATED ALWAYS AS IDENTITY` column | model as a Delta identity column |
+
+## Semantic differences (not just function renames)
+
+These bite even when every function name is right — they're behavioral, and Matillion
+"calculator"/"rewrite" components produce them constantly:
+
+- **`SELECT *, <expr> AS <existing_col>` — Snowflake replaces the column; Databricks
+  errors** (`[COLUMN_ALREADY_EXISTS]`). A calculator that recomputes a column emits
+  `SELECT t.*, <expr> AS COL` where `COL` is already in `t.*`. Databricks won't let a
+  result have two `COL`s. Fix with **`SELECT t.* EXCEPT (COL), <expr> AS COL`** (list every
+  re-derived column in the `EXCEPT`). This is one of the most common failures on a real
+  migration — expect it wherever a transform overwrites an input column.
+- **`UPDATE … SET … FROM <other_table>` → `MERGE`.** Snowflake (and Matillion `sql-executor`
+  steps) do correlated cross-table updates with `UPDATE t SET … FROM s WHERE t.k = s.k`.
+  Databricks **does not support `UPDATE … FROM`** (`Syntax error at or near 'FROM'`) — rewrite
+  as `MERGE INTO t USING s ON t.k = s.k WHEN MATCHED [AND <cond>] THEN UPDATE SET …`.
+- **The target of a `MERGE`/`UPDATE` must already exist.** A persistent lookup/output table
+  the pipeline writes across runs won't exist on a fresh workspace — add `CREATE TABLE IF
+  NOT EXISTS <t> (…)` before the first `MERGE` into it (the setup notebook only creates
+  *source* tables, not derived outputs).
+- **Spark can't reference a sibling SELECT alias; Snowflake can.** Snowflake allows a
+  later expression in the same `SELECT` to reference a column *aliased earlier in that same
+  `SELECT`* (lateral alias). Spark/Databricks does **not** — `SELECT datediff(...) AS days,
+  CASE WHEN days > 30 …` fails with `UNRESOLVED_COLUMN: days`. Matillion "calculator"
+  components that build a value and then bucket it in one step produce exactly this. Fix by
+  computing the alias in an inner layer (CTE / subquery) and referencing it from the outer
+  `SELECT`.
+- **Matillion inter-component placeholders (`$T{Component Name}`, `${var}`) must be fully
+  resolved.** These are Matillion-runtime references to another component's output or a
+  variable — they are **not** SQL. `$T{Fill Null Values}` → the name of the temp
+  view/table that component became (e.g. `fill_null_values`); `${var}` → a bundle
+  variable / parameter. A leftover `$T{...}` both fails SQL parsing and (inside a Python
+  f-string) breaks the notebook — grep for `$T{` / `${` in generated SQL before shipping.
 
 ## Quoted, upper-cased identifiers
 
@@ -112,6 +154,14 @@ SQL is often full of `"SCHEMA"."TABLE"."COLUMN"` in caps. Databricks identifiers
 - `"d"."FULL_DATE"` → `` `d`.`full_date` `` (or just `d.full_date`).
 - Keep table/column *spelling* consistent with what you emit in DDL; don't mix a
   double-quoted `"MyCol"` (case-sensitive in Snowflake) assumption into Databricks.
+
+**This is one of the most pervasive and most-missed translations** — a real export has
+hundreds of `"COL"` tokens, and on Databricks a double-quoted string is a **string
+literal**, not an identifier, so a leftover `"KID"` fails with `Syntax error at or near
+'"KID"'`. Convert **every** double-quoted identifier (columns *and* aliases like `"r"`,
+`"s"`) to backticks. When doing this programmatically, scope the replacement to the SQL
+text only (not surrounding Python), and convert double-quoted tokens only — leave
+**single-quoted** string literals (`'Draft'`, `'<None>'`) untouched.
 
 ## `GRANT` / role management
 

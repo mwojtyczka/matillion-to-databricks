@@ -30,5 +30,7 @@ GROUP BY category, region_name
 ## Gotchas
 
 - Matillion function names are capitalized (`Sum`, `Count`); map to lowercase SQL funcs (`SUM`, `COUNT`).
+- A Matillion **distinct count** must become `COUNT(DISTINCT col)` — **not** `COUNT DISTINCT(col)` (a common generation slip that is invalid SQL and fails with `WRONG_NUM_ARGS`/parse error).
+- **Keep the aggregate's output alias consistent between where it's defined and where it's consumed.** A generation slip produces the alias with a space (`` `count distinct_ID` ``) but references it downstream with an underscore (`` `count_distinct_ID` ``) → `UNRESOLVED_COLUMN`. Pick one spelling and use it in both places (prefer no spaces — `count_distinct_ID`).
 - Output column names default to the source column name unless renamed downstream. Keep them stable so the final `rewrite-table-dl` target schema matches.
 - Every non-aggregated selected column must appear in `groupings`, or Spark SQL errors.

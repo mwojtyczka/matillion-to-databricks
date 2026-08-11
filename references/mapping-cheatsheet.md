@@ -82,6 +82,11 @@ success/failure. Translate the whole pattern to:
 
 The notifications themselves are usually webhook steps — see `orchestration/webhook.md`.
 
+> **Use `run_if` on the task, not `depends_on … outcome:`.** `outcome:` is legal only when
+> depending on an if/else *condition* task; on a normal dependency it fails at deploy
+> (`Outcomes can only be specified for if/else condition dependencies`). See
+> `references/dab-gotchas.md`.
+
 ## Data quality (cross-cutting)
 
 | Matillion type | Databricks | Reference |

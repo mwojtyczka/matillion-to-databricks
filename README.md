@@ -126,6 +126,8 @@ references/                  ← per-component + cross-cutting reference docs
   ├─ data-quality.md            ← DQX quality gates (Assert / reject → DQX)
   ├─ classic-json-format.md     ← reading the older single-file JSON export
   ├─ snowflake-sql.md           ← Snowflake → Databricks SQL translation
+  ├─ dab-gotchas.md             ← emitted-bundle pitfalls (paths, run_if, validate)
+  ├─ verification-checklist.md  ← required pre-handoff self-check gate
   ├─ deploy-and-validate.md
   ├─ transformation/         ← table-input, join, aggregate, rewrite-table
   └─ orchestration/          ← start-end, sql-executor, run-transformation,

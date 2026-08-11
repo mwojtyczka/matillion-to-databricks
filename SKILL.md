@@ -27,6 +27,33 @@ Consult the component reference (below) **before** translating each component, n
 
 ---
 
+## How to work — reference-driven, component-by-component, verified
+
+**Do not translate from memory or in one big pass.** Every migration bug this skill guards
+against has shipped *because* an agent skipped the reference and batch-translated. Work this
+way, without shortcuts:
+
+1. **One component at a time.** For each Matillion component: identify its type → open its
+   reference (`references/…`) → translate it → immediately check that output against that
+   reference's gotchas. Don't move on until it's right.
+2. **Translate SQL against the dialect reference, not memory.** If the backend isn't
+   Databricks, keep `references/snowflake-sql.md` open and check *each* function/idiom
+   against it as you go — the dialect traps (`"quoted"` identifiers, `SELECT *,x AS existing`,
+   `UPDATE…FROM`, `datediff(unit,…)`, sibling-alias refs, `UNION` alignment) are silent and
+   pervasive.
+3. **Externally-owned APIs: use the owning skill/docs, never memory.** DQX checks →
+   `dqx-*` skills; dbldatagen (setup notebook) → `databricks-data-generation` skill +
+   <https://databrickslabs.github.io/dbldatagen/>. Guessing option names is a top failure.
+4. **Verify before handoff — this is a required gate, not optional.** Run the full
+   **`references/verification-checklist.md`** against the generated bundle (and
+   `databricks bundle validate` if you have the CLI). Fix every finding. A bundle that
+   hasn't been checked against that list is not done.
+
+The rest of this doc is the workflow (Steps 1–6) and the per-component references those
+steps point into. Follow them in order; don't jump to emitting a bundle.
+
+---
+
 ## The two decisions of every migration
 
 Migrating a Matillion project is two nested decisions, in order:
@@ -201,6 +228,14 @@ Emit a DAB with:
 - a **`README.md` at the bundle root** documenting the migration (see Step 5b),
 - a **setup notebook** (`src/setup/00_generate_source_data.py`) the user runs **manually once** before the first run to fabricate any missing source/input tables with synthetic data for a test — kept out of the Job graph, guarded so it no-ops against real sources (see Step 5c).
 
+**Emit the bundle correctly by construction — these are the mistakes that make a generated bundle fail to deploy (full list + why: `references/dab-gotchas.md`):**
+- **Resource-file paths start with `../`.** In a `resources/*.yml`, `notebook_path` / `file.path` resolve relative to `resources/`, so they must climb out: `../src/notebooks/x.py`, not `src/notebooks/x.py` (the latter fails with `notebook … not found`).
+- **Route success/failure with task-level `run_if`, never `depends_on … outcome:`.** `outcome:` is legal only when depending on an if/else *condition* task; on a normal task it fails at deploy. Use `run_if: ALL_SUCCESS` (success-only), `AT_LEAST_ONE_FAILED` (failure handler), `ALL_DONE` (run regardless) — this is how the failure-counting pattern maps (`references/mapping-cheatsheet.md`).
+- **First task creates the schema** (`CREATE SCHEMA IF NOT EXISTS IDENTIFIER(:schema)`), and notebook source files use notebook-source format (`# Databricks notebook source` + `# MAGIC`).
+- **Use serverless compute — don't emit classic clusters.** A notebook task with **no** `job_cluster_key` / `new_cluster` / `existing_cluster_id` runs on **serverless**; that's the default. Do **not** generate a `job_clusters:` block with a `new_cluster` (`spark_version`/`node_type_id`/`num_workers`) — serverless needs no cluster config, spins up faster, and is the recommended default. SQL tasks already run on the SQL warehouse (`warehouse_id`), not a cluster. Only reach for a configured cluster if a task has a specific need serverless can't meet, and flag it if so.
+
+**Validate before handoff — if you can.** If you (the agent) can run the CLI (e.g. Claude Code), run **`databricks bundle validate -t dev`** on the generated bundle and fix every error before handing it off or deploying — this catches the path and `run_if`/`outcome` errors above automatically. **If you're inside the workspace and cannot run the CLI (e.g. Genie), you cannot validate** — so the by-construction rules above are mandatory, and the bundle is only as correct as you emit it. See `references/dab-gotchas.md`.
+
 See the worked reference bundle in the repo at `examples/databricks-source/databricks/` — a `databricks.yml` + `resources/job.yml` + `src/` layout: an all-SQL-tasks-plus-one-notebook Job with no pipeline resource. (The demo READMEs under `examples/*/README.md` model the generated-README shape below.)
 
 ## Step 5b — Write the bundle's `README.md`
@@ -219,9 +254,10 @@ Always emit a `README.md` at the bundle root so the migration is self-documentin
 6. **Secrets** — every credential surfaced and the secret scope/key it must be read from at runtime; note that none are stored in the bundle (`references/secrets.md`). Include the ready-to-run `databricks secrets create-scope` + one `put-secret <scope> <key>` per credential (values prompted, never inline) that the user must run before the first run. Omit the section only if the project has no credentials.
 7. **Synthetic source data (test setup)** — describe the setup notebook (Step 5c): which source/input tables it fabricates (that the Matillion transforms read but no task produces), roughly what each contains (table → columns/row count/notable value ranges), that it's **synthetic stand-in data** generated with `dbldatagen`, and that it **only fills tables that don't already exist** — so where the real sources exist it no-ops and they're used instead. **State explicitly that the user must run this notebook by hand once before the first `bundle run`** — it is deliberately not a Job task, so nothing runs it automatically; skipping it means the Job fails at the first read (`TABLE_OR_VIEW_NOT_FOUND`) on a fresh workspace.
 8. **Deployment** — the config values to set (`catalog`, `schema`, `warehouse_id`, host) and the exact commands **in order**, with the manual step called out as required, not optional:
-   1. `databricks bundle deploy …`
-   2. **Manually run** the setup notebook `src/setup/00_generate_source_data.py` once (open it in the workspace, set the `catalog`/`schema` widgets, Run All) — **required** for a test run on a fresh workspace; skip *only* if the real source tables already exist.
-   3. `databricks bundle run …`
+   1. **Download the bundle to a local machine** — the generated bundle usually lives in the workspace, but `databricks bundle deploy` runs from a **local directory**, so export it first: `databricks workspace export-dir "<workspace path to this bundle>" ./<bundle-dir>` then `cd ./<bundle-dir>`. (Skip only if you already have the bundle locally.)
+   2. `databricks bundle deploy …`
+   3. **Manually run** the setup notebook `src/setup/00_generate_source_data.py` once (open it in the workspace, set the `catalog`/`schema` widgets, Run All) — **required** for a test run on a fresh workspace; skip *only* if the real source tables already exist.
+   4. `databricks bundle run …`
 
    Match what Step 6 hands the user.
 9. **Post-migration checklist** — literal checkboxes for the manual steps a human must do. Include both the **test-run** step and the **production** steps:
@@ -242,7 +278,8 @@ The migrated Job reads whatever tables the Matillion transforms read — often *
 - **It's a manual pre-setup step the user runs once — NOT a task in the Job.** Emit `src/setup/00_generate_source_data.py` as a standalone Databricks **notebook** (`# Databricks notebook source` first line) and keep it **out of the Job's task graph** — don't add it as a task or a `depends_on`. The user runs it themselves before the first `bundle run` (document this in the README's deployment steps + post-migration checklist). Keeping it out of the pipeline means the production Job never fabricates data as a side effect.
 - **Guard every write with existence checks.** Use `CREATE TABLE IF NOT EXISTS` (or check the catalog and skip when the table is present) so running the notebook against a workspace that already has the real source tables no-ops instead of clobbering them, and re-running is idempotent.
 - **Identify the inputs to create:** every table a transform reads (a source/read node — no incoming connectors) that **no task in the Job produces** is a source input to fabricate.
-- **Get each table's columns from the source, don't infer them.** In the classic JSON format a read node lists exactly which columns it selects — parse the **`Column Names`** parameter of each source/read node (and the `join`'s `Output Columns` / read-node projections) to get the precise column list per source table. This is far more reliable than reverse-engineering columns from downstream usage across many transformations; fall back to downstream inference (which columns are cast/joined/selected) only for a column the read node doesn't enumerate. Types can stay loose (the demo sources use `STRING` and the transforms `CAST`), but the **column set** should come from the source's own `Column Names`.
+- **Get each table's columns from the source, don't infer them — and cover EVERY read.** In the classic JSON format a read node lists exactly which columns it selects — parse the **`Column Names`** parameter of each source/read node (and the `join`'s `Output Columns` / read-node projections) to get the precise column list per source table. Take the **union across every transform that reads the table** (different transforms read different subsets — miss one and the setup table lacks a column, failing at run time with `UNRESOLVED_COLUMN`). Column names may contain **hyphens or other non-alphanumeric characters** (e.g. `` `445_YYYY-MM` ``) — match backticked identifiers fully, don't restrict to `[A-Za-z0-9_]`.
+- **Type/value the synthetic data by how the transform *uses* it, not by the column name.** A column named `OVERDUE` sounds numeric but if a transform does `WHEN OVERDUE = 'Overdue'` it's a **string** with specific values — generate it as `values=["Overdue","Not Overdue"]`, not an integer, or the transform fails with `CAST_INVALID_INPUT`. Scan how each column is compared/cast/joined and match the generated type and value domain to that (string codes → the actual code strings; keys → matching FK ranges; dates → dates). Name-based type guessing is a common source of run-time cast failures. This is far more reliable than reverse-engineering columns from downstream usage across many transformations; fall back to downstream inference (which columns are cast/joined/selected) only for a column the read node doesn't enumerate. Types can stay loose (the demo sources use `STRING` and the transforms `CAST`), but the **column set** should come from the source's own `Column Names`.
 - **Generate with `dbldatagen`, and get the API from its owner — don't write it from memory.** The dbldatagen API surface is **not** owned by this skill (it changes upstream), so don't hardcode or memorize option names here. To author the `withColumn` spec, **invoke the `databricks-data-generation` skill** (validated, local patterns) and consult the **official docs** — <https://databrickslabs.github.io/dbldatagen/> — as the source of truth. dbldatagen rejects an unknown option with a hard `DataGenError(msg='invalid column option …')` and mis-parses a bad date literal with a `ValueError: time data … does not match format`; when you hit either, look up the correct option/format in those sources rather than guessing another name.
 - **Migration-specific wiring the dbldatagen docs won't tell you** (get these right regardless of the API details):
   - **Install + restart:** dbldatagen is **not** on serverless / vanilla clusters, so the notebook's first two cells are `%pip install dbldatagen` then `dbutils.library.restartPython()` — before any widgets/imports (restart clears state).
@@ -253,15 +290,21 @@ The migrated Job reads whatever tables the Matillion transforms read — often *
 
 `references/snowflake-sql.md` explains why source tables are often external (the Snowflake `RAW.*` assumption). The two repo demos instead seed tiny fixtures inline in their first SQL task — a simpler equivalent when the data is trivial and you don't mind it running each time.
 
+## Step 5d — Verify the bundle against the checklist (required)
+
+Before deploying, **run every item in `references/verification-checklist.md` against the generated bundle** and fix each finding. This is a required gate, not a nicety: it converts the dialect/DAB/setup gotchas scattered across the references into a concrete, greppable pass, and it is the step that catches the silent SQL bugs (`"quoted"` identifiers, `SELECT *,x AS existing`, `UPDATE…FROM`, `datediff(unit,…)`, `UNION` misalignment, unresolved `$T{}` placeholders, missing setup columns, …) that otherwise only surface as run-time task failures one at a time. If you can run the CLI, also run `databricks bundle validate -t dev`. Don't present the bundle as complete until this passes.
+
 ## Step 6 — Deploy and validate
 
-**The deployment procedure has three ordered steps — the manual setup-notebook run is part of it, not an afterthought:**
+**The deployment procedure has four ordered steps — the download and the manual setup-notebook run are part of it, not afterthoughts:**
 
-1. **Deploy** the bundle — `databricks bundle deploy` with the config `--var`s (below).
-2. **Run the setup notebook** `src/setup/00_generate_source_data.py` **once, manually** (open it, set the `catalog`/`schema` widgets, Run All — or `databricks jobs submit` a one-off notebook task). This creates the synthetic source tables the Job reads. **Required for a test run on a fresh workspace** — the notebook is deliberately not a Job task, so nothing runs it automatically, and a `bundle run` without it fails at the first read (`TABLE_OR_VIEW_NOT_FOUND`). Skip this step *only* when the real source tables already exist.
-3. **Run** the Job — `databricks bundle run <job>`.
+1. **Download the bundle locally** — if the generated bundle lives in the workspace, `databricks bundle deploy` still runs from a **local directory**, so export it first: `databricks workspace export-dir "<workspace path>" ./<bundle-dir>` then `cd ./<bundle-dir>`. (Skip if the bundle is already local.)
+2. **Validate** — `databricks bundle validate -t dev` and fix every error before deploying. This catches emit bugs (wrong resource paths, `depends_on … outcome:` misuse, bad YAML) up front. **Only possible with the CLI** — an in-workspace agent (Genie) can't validate, so for that path the bundle must be correct by construction (`references/dab-gotchas.md`).
+3. **Deploy** the bundle — `databricks bundle deploy` with the config `--var`s (below).
+4. **Run the setup notebook** `src/setup/00_generate_source_data.py` **once, manually** (open it, set the `catalog`/`schema` widgets, Run All — or `databricks jobs submit` a one-off notebook task). This creates the synthetic source tables the Job reads. **Required for a test run on a fresh workspace** — the notebook is deliberately not a Job task, so nothing runs it automatically, and a `bundle run` without it fails at the first read (`TABLE_OR_VIEW_NOT_FOUND`). Skip this step *only* when the real source tables already exist.
+5. **Run** the Job — `databricks bundle run <job>`.
 
-Whoever performs these steps depends on where you (the agent) are running — but always present all three, in order, and flag step 2 as required.
+Whoever performs these steps depends on where you (the agent) are running — but always present them in order, and flag step 4 as required.
 
 **Deploying runs the Databricks CLI (`databricks bundle deploy`) — there is no SDK/REST equivalent. Who runs it depends on where you (the agent) are running:**
 
