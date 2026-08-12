@@ -162,6 +162,25 @@ build/scratch and can be deleted.
 You can use the skill purely to *generate and understand* the converted code without
 a workspace; you only need Databricks access for Step 6 (deploy & validate).
 
+### Skill / plugin dependencies (public only)
+
+The skill is **self-contained** for the core migration — parsing a Matillion export,
+translating the SQL, and emitting the bundle need **no other plugin**. Only two
+dependencies come into play for specific steps, **both public and both optional**:
+
+| Dependency | Public source | Needed for | How to get it in Claude |
+|---|---|---|---|
+| **DQX skills** — `dqx-define-checks`, `dqx-apply-checks`, `dqx-storage`, `dqx-end-to-end`, `dqx-profile-and-generate` | Databricks Labs — [github.com/databrickslabs/dqx](https://github.com/databrickslabs/dqx) (`skills/`) | **Only if** the Matillion project has data-quality gates (`Assert` / reject-filter). The skill uses them for DQX check *syntax*; the migration wiring itself lives in `references/data-quality.md`. | Copy the DQX `skills/` folders alongside this one — `~/.claude/skills/` (Claude Code) or `.assistant/skills/` (Genie). At runtime the DQX task installs the `databricks-labs-dqx` PyPI library via `%pip`. |
+| **dbldatagen** | PyPI — [databrickslabs.github.io/dbldatagen](https://databrickslabs.github.io/dbldatagen/) | The emitted setup notebook fabricates synthetic source data with it. | **Nothing to install in Claude** — it's a Python library the setup notebook installs itself (`%pip install dbldatagen`). |
+
+**No Databricks-internal / Field-Engineering plugins are required** to run this skill.
+The reference docs mention an internal `databricks-data-generation` skill as *one*
+convenience for authoring the synthetic-data notebook — it is **not** a dependency: the
+public `dbldatagen` library and its docs (above) fully cover that step, and the setup
+notebook is emitted with a runnable `dbldatagen` spec either way. If you don't install the
+DQX skills, the only thing you lose is help writing DQX check syntax — and only for
+projects that actually have data-quality gates.
+
 ---
 
 ## Install / make it available
