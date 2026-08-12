@@ -384,9 +384,10 @@ the flow is: **upload your Matillion files, start a fresh chat, then prompt.**
    > Databricks Job (SQL/notebook tasks; a Lakeflow pipeline only if one is needed)."**
 
 The skill triggers on Matillion-migration requests and walks the workflow:
-**inventory → parse the orchestration/transformation graphs → map each component →
-assemble a Databricks Asset Bundle (`databricks.yml`) → deploy, then run the Job and
-fix-and-redeploy until every task is green.** With a CLI, Claude drives that
+**inventory → parse the orchestration/transformation graphs → (for a non-trivial project)
+state the migration plan → map each component → assemble a Databricks Asset Bundle
+(`databricks.yml`) → deploy, then run the Job and fix-and-redeploy until every task is
+green.** With a CLI, Claude drives that
 run-to-green loop autonomously (pausing only for destructive ops or decisions it can't
 make) — and if you hand it **expected output** (a golden table, or a row-count +
 aggregate spec) it reconciles the migrated results against it. To let it drive the loop,

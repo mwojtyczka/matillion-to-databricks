@@ -175,6 +175,35 @@ See:
 
 Quick lookup for every type: `references/mapping-cheatsheet.md`.
 
+## Step 3b — State the migration plan (checkpoint for non-trivial projects)
+
+Once the graphs are parsed you've made the **coarse, hard-to-reverse decisions** — how
+many Jobs, each transformation's task type, anything going to Lakeflow, how Jobs
+decompose. These are cheap to change now and expensive to unwind *after* a full
+conversion (especially under the autonomous run-to-green loop, where a wrong structural
+call otherwise isn't seen until much churn has happened). So **state the plan before
+emitting code** — but keep it proportionate:
+
+- **Skip it for a trivial project** (a single orchestration with a handful of
+  components) — the "two decisions" are obvious; just proceed.
+- **State it for a non-trivial project** (**more than one orchestration, or roughly 8+
+  components**). A few lines is enough — the *structural* calls only, not per-component
+  detail (that's Step 4):
+  - **Jobs** you'll create (one per orchestration; note any nested `run-orchestration`).
+  - **Task type per transformation** (SQL task / notebook / Lakeflow) and — importantly —
+    **which, if any, go to Lakeflow and why** (Lakeflow is the escape hatch, not the
+    default; call out each one so a wrong reach for it is caught here).
+  - **Consolidations** — linear chains collapsed to one query, and any shared sub-graph
+    extracted once (Step 3).
+  - **Namespace + secrets** — the target `catalog.schema`, and that secrets go to scopes.
+- **How to present it depends on where you're running** (mirrors the execution layers in
+  Step 5d): in an **interactive** session (Claude Code with a human, or Genie chat),
+  surface the plan and pause briefly for correction. In **autonomous** mode, state it as a
+  visible decision record and proceed without blocking — don't stall an unattended run.
+
+This is a decision record, not a heavyweight gate: it exists to catch a wrong *structural*
+choice early, not to re-confirm every component.
+
 ## Step 4 — Map each component
 
 For every component in every file, open its reference and translate it. Default to **SQL** (`CREATE OR REPLACE TABLE ... AS SELECT` for a SQL task, or `CREATE OR REFRESH MATERIALIZED VIEW` inside a Lakeflow pipeline); use **PySpark in a notebook** where SQL can't express it or the source is imperative. Choose the task type per the ladder in "The two decisions".
