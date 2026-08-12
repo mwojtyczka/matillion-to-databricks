@@ -8,3 +8,4 @@ __pycache__/
 # Internal planning/scratch (not for public repo)
 docs/
 .superpowers/
+.pytest_cache/

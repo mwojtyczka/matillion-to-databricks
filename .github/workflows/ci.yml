@@ -21,3 +21,15 @@ jobs:
           python-version: "3.11"
       - run: pip install pyyaml
       - run: python3 scripts/check_examples.py
+
+  unit-tests:
+    # Unit tests for the helper scripts (e.g. the setup-coverage parser). Pure Python,
+    # no Databricks workspace or credentials needed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest
+      - run: python3 -m pytest -q

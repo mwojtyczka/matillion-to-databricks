@@ -83,6 +83,10 @@ Two things are deliberately **off** that ladder:
   notebook produces every column the transforms read (the dominant setup failure). It's
   static (no workspace), and referenced from `SKILL.md` Step 5c + the verification
   checklist. CI only compiles it so it can't rot.
+- **Helper scripts have unit tests under `tests/`** (`pytest`, config in `pyproject.toml`,
+  a second CI job runs `python3 -m pytest`). The setup-coverage parser is regex-based and
+  its correctness is the whole point — if you change its parsing, add/adjust a fixture in
+  `tests/test_check_setup_coverage.py`. Tests are pure Python (no workspace/credentials).
 
 ## Editing the skill (this is TDD for docs)
 
