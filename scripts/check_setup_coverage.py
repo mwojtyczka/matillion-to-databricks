@@ -51,12 +51,24 @@ _SQL_TYPES = {
 
 
 def _source_tables(setup_text: str) -> set[str]:
-    """Tables the setup notebook creates."""
+    """Tables the setup notebook creates.
+
+    Handles the three write styles seen in real bundles:
+      table_name = f"{catalog}.{schema}.SOURCE"      (namespaced var)
+      saveAsTable(f"{catalog}.{schema}.SOURCE")       (namespaced inline)
+      saveAsTable("source") / CREATE TABLE source     (bare name + a separate
+                                                        `USE CATALOG/SCHEMA`)
+    """
     tabs: set[str] = set()
     # table_name = f"{catalog}.{schema}.SOURCE"   (any catalog/schema var)
     tabs |= set(re.findall(r'f"\{[a-z_]+\}\.\{[a-z_]+\}\.(' + _TBL + r')"', setup_text))
     # .saveAsTable(f"{catalog}.{schema}.SOURCE")
     tabs |= set(re.findall(r'saveAsTable\(f"\{[a-z_]+\}\.\{[a-z_]+\}\.(' + _TBL + r')"', setup_text))
+    # bare .saveAsTable("source")  — unqualified, relies on a separate USE CATALOG/SCHEMA
+    tabs |= set(re.findall(r'saveAsTable\(["\'](' + _TBL + r')["\']\)', setup_text))
+    # bare CREATE TABLE [IF NOT EXISTS] source  (SQL-built source tables)
+    tabs |= set(re.findall(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(' + _TBL + r')\b',
+                           setup_text, re.IGNORECASE))
     return tabs
 
 
@@ -133,46 +145,55 @@ def _read_columns(files: list[str], source_tables: set[str]) -> dict[str, list[s
 def _generated_columns(setup_text: str, source_tables: set[str]) -> dict[str, set[str]]:
     """Columns each setup block generates, keyed by the block's target source table.
 
-    A block is delimited by a `table_name = f"…{catalog}.{schema}.SOURCE"` assignment
-    (or a `saveAsTable(f"…SOURCE")`) and runs until the next such marker. Within a block
-    we collect both `.withColumn("X", …)` (dbldatagen) and `AS X` / `` AS `X` `` (raw
-    spark.sql SELECT, e.g. a date dimension built with `spark.sql(...)`).
+    Each source table is anchored by a marker, which is either a **start** (columns
+    follow it) or an **end** (columns precede it):
+      start: `table_name = f"…X"`,  `CREATE TABLE [IF NOT EXISTS] X …`
+      end:   `saveAsTable(f"…X")`,  bare `saveAsTable("X")`
+    The bare-`saveAsTable("X")` style (with a separate `USE CATALOG/SCHEMA`) puts the
+    marker at the *end* of the block, so we take the column range up to it; the
+    `table_name=` style puts it at the *start*, so we take the range after it. Within a
+    block we collect `.withColumn("X", …)` (dbldatagen) and `AS X` / `` AS `X` `` (raw
+    spark.sql SELECT, e.g. a date dimension) — excluding CAST `AS <TYPE>` targets.
     """
-    raw = [
-        (m.start(), m.group(1))
-        for m in re.finditer(
-            r'(?:table_name\s*=\s*f"|saveAsTable\(f")\{[a-z_]+\}\.\{[a-z_]+\}\.(' + _TBL + r')"',
-            setup_text,
-        )
-    ]
-    # Collapse consecutive markers for the *same* table into one block boundary. A notebook
-    # may both assign `table_name = f"…X"` and later `saveAsTable(f"…X")` for the same X;
-    # without this the second marker would start a spurious empty block and split X's
-    # `withColumn`s. Keeping only the first marker per run means each table's columns stay
-    # attributed to it up to the *next distinct* table's marker.
-    markers: list[tuple[int, str | None]] = []
-    for pos, tbl in raw:
-        if not markers or markers[-1][1] != tbl:
-            markers.append((pos, tbl))
-    markers.append((len(setup_text), None))
+    # (position, table, kind) for every marker, kind ∈ {"start","end"}
+    marks: list[tuple[int, str, str]] = []
+    for m in re.finditer(r'table_name\s*=\s*f"\{[a-z_]+\}\.\{[a-z_]+\}\.(' + _TBL + r')"', setup_text):
+        marks.append((m.start(), m.group(1), "start"))
+    for m in re.finditer(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(' + _TBL + r')\b', setup_text, re.IGNORECASE):
+        marks.append((m.start(), m.group(1), "start"))
+    for m in re.finditer(r'saveAsTable\(f"\{[a-z_]+\}\.\{[a-z_]+\}\.(' + _TBL + r')"', setup_text):
+        marks.append((m.start(), m.group(1), "end"))
+    for m in re.finditer(r'saveAsTable\(["\'](' + _TBL + r')["\']\)', setup_text):
+        marks.append((m.start(), m.group(1), "end"))
+    marks.sort()
+    positions = [p for p, _, _ in marks]
+
+    def _cols_in(text: str) -> set[str]:
+        cols = set(re.findall(r'withColumn\("(' + _COL + r')"', text))
+        cols |= set(re.findall(r'\bAS\s+`(' + _COL + r')`', text))
+        # unquoted `AS COL` (raw spark.sql SELECT) — but NOT the `AS <TYPE>` of a CAST,
+        # which would spuriously add STRING/DATE/BIGINT/… and could mask a real column.
+        cols |= {c for c in re.findall(r'\bAS\s+(' + _TBL + r')\b', text) if c.upper() not in _SQL_TYPES}
+        # createDataFrame(rows, ["c1","c2",…]) / make_df(rows, [...], …): the schema is a
+        # list of quoted column-name strings. Grab the quoted names inside each such list.
+        for lst in re.findall(r'(?:createDataFrame|make_df)\([^,]+,\s*\[(.*?)\]', text, re.S):
+            cols |= set(re.findall(r'["\'](' + _COL + r')["\']', lst))
+        return cols
+
+    import bisect
     gen: dict[str, set[str]] = {t: set() for t in source_tables}
-    for i in range(len(markers) - 1):
-        start, tbl = markers[i]
-        end = markers[i + 1][0]
-        if tbl is None or tbl not in source_tables:
+    for i, (pos, tbl, kind) in enumerate(marks):
+        if tbl not in source_tables:
             continue
-        block = setup_text[start:end]
-        cols = set(re.findall(r'withColumn\("(' + _COL + r')"', block))
-        cols |= set(re.findall(r'\bAS\s+`(' + _COL + r')`', block))
-        # unquoted `AS COL` (raw spark.sql SELECT, e.g. a date dimension) — but NOT the
-        # `AS <TYPE>` of a CAST, which would spuriously add STRING/DATE/BIGINT/… to the
-        # generated set and could mask a real read column that happens to share that name.
-        cols |= {
-            c
-            for c in re.findall(r'\bAS\s+(' + _TBL + r')\b', block)
-            if c.upper() not in _SQL_TYPES
-        }
-        gen[tbl] |= cols
+        if kind == "start":
+            # columns from just after this marker up to the next marker (any table)
+            lo = pos
+            hi = positions[i + 1] if i + 1 < len(positions) else len(setup_text)
+        else:  # end marker — columns from the previous marker up to this one
+            j = bisect.bisect_left(positions, pos) - 1
+            lo = positions[j] if j >= 0 else 0
+            hi = pos
+        gen[tbl] |= _cols_in(setup_text[lo:hi])
     return gen
 
 

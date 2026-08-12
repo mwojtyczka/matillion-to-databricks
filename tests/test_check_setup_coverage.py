@@ -49,6 +49,27 @@ def test_source_tables_both_markers():
     assert csc._source_tables(setup) == {"SRC_ORDERS", "AD_ORG"}
 
 
+def test_source_tables_bare_saveastable_and_create():
+    # Bare unqualified writes (with a separate USE CATALOG/SCHEMA) must be detected too.
+    setup = (
+        'df.write.mode("overwrite").saveAsTable("prisma_t_uk_risk")\n'
+        'spark.sql("CREATE TABLE IF NOT EXISTS cdm_titles (id STRING)")\n'
+    )
+    assert csc._source_tables(setup) == {"prisma_t_uk_risk", "cdm_titles"}
+
+
+def test_generated_columns_bare_saveastable_with_schema_list():
+    # createDataFrame(rows, [..]) / make_df(rows, [..]) + bare saveAsTable("X") at block END:
+    # columns precede the marker and are declared as a quoted string list.
+    setup = '''
+risk_rows = [(1, None, "x")]
+risk_df = make_df(risk_rows, ["id", "to_date", "region"], null_date_cols=["to_date"])
+risk_df.write.mode("overwrite").saveAsTable("prisma_t_uk_risk")
+'''
+    gen = csc._generated_columns(setup, csc._source_tables(setup))
+    assert gen["prisma_t_uk_risk"] == {"id", "to_date", "region"}
+
+
 # --- end-to-end via a temp bundle -------------------------------------------------
 
 def _write_bundle(tmp_path, setup_body: str, transform_sql: str):
