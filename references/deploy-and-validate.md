@@ -4,12 +4,11 @@
 
 Deploying a bundle runs the **Databricks CLI** (`databricks bundle deploy`). Who runs it depends on where the agent is running:
 
-**If you can run a shell / the CLI (e.g. Claude Code):** deploy directly. Delegate to the
-deployment skill rather than hand-rolling commands:
-
-> "use the databricks-resource-deployment skill to deploy this bundle"
-
-That skill handles Lakeflow pipelines + Jobs, prefers serverless compute, uses `databricks sync`, and enforces UC 3-layer namespaces.
+**If you can run a shell / the CLI (e.g. Claude Code):** deploy directly with the
+Databricks CLI — `databricks bundle deploy -t dev` (passing the `--var`s below), then
+`databricks bundle run <job> -t dev`. The bundle already targets serverless compute and
+UC 3-layer namespaces (that's how the skill emits it — see `references/dab-gotchas.md`);
+no wrapper is needed.
 
 **If you are Genie in-workspace:** you have a **job-scoped** CLI (`runDatabricksCli` —
 trigger/list runs, inspect run output), but **`bundle deploy`/`validate`/`run`/`destroy`
@@ -66,10 +65,9 @@ command.
 
 ## Validate — run the checklist (works in Genie too)
 
-After deploy, run this checklist. In Claude Code, use the
-`fe-databricks-tools:databricks-query` skill; in Genie, run the SQL in-chat (Genie can
-execute SQL even though it can't run the CLI). If you couldn't deploy, run this only
-after the user confirms the deploy succeeded.
+After deploy, run this checklist. From a CLI, run the SQL with `databricks sql` or the
+SQL statements API; in Genie, run it in-chat (Genie can execute SQL). If you couldn't
+deploy, run this only after the user confirms the deploy succeeded.
 
 - [ ] Every target table from each `rewrite-table-dl` and every `sql-executor`/`python-script` output exists.
   ```sql
@@ -106,7 +104,7 @@ after the user confirms the deploy succeeded.
 
 ## Gotcha
 
-Grant the pipeline/job's principal UC access (`USE CATALOG`, `USE SCHEMA`, `SELECT`/`MODIFY`) before the first run, or tasks fail with permission errors. The databricks-resource-deployment skill covers the grant pattern.
+Grant the pipeline/job's principal UC access (`USE CATALOG`, `USE SCHEMA`, `SELECT`/`MODIFY`) before the first run, or tasks fail with permission errors (`GRANT USAGE ON CATALOG … ; GRANT SELECT/MODIFY ON SCHEMA … TO \`<principal>\``).
 
 If the migration uses secrets (`references/secrets.md`), the scope and its keys must exist
 **before** the first run (a task calling `dbutils.secrets.get` / `{{secrets/...}}` fails at

@@ -39,6 +39,16 @@ import sys
 _TBL = r"[A-Za-z][A-Za-z0-9_]*"
 _COL = r"[0-9A-Za-z_-]+"
 
+# SQL type keywords that can follow `AS` in a CAST — excluded from unquoted `AS COL`
+# alias capture so a `CAST(x AS STRING)` doesn't get mistaken for a generated column.
+_SQL_TYPES = {
+    "STRING", "VARCHAR", "CHAR", "TEXT", "BINARY", "BOOLEAN",
+    "TINYINT", "SMALLINT", "INT", "INTEGER", "BIGINT", "LONG",
+    "FLOAT", "REAL", "DOUBLE", "DECIMAL", "NUMERIC",
+    "DATE", "TIMESTAMP", "TIMESTAMP_NTZ", "INTERVAL",
+    "ARRAY", "MAP", "STRUCT", "VARIANT", "OBJECT",
+}
+
 
 def _source_tables(setup_text: str) -> set[str]:
     """Tables the setup notebook creates."""
@@ -128,13 +138,22 @@ def _generated_columns(setup_text: str, source_tables: set[str]) -> dict[str, se
     we collect both `.withColumn("X", …)` (dbldatagen) and `AS X` / `` AS `X` `` (raw
     spark.sql SELECT, e.g. a date dimension built with `spark.sql(...)`).
     """
-    markers = [
+    raw = [
         (m.start(), m.group(1))
         for m in re.finditer(
             r'(?:table_name\s*=\s*f"|saveAsTable\(f")\{[a-z_]+\}\.\{[a-z_]+\}\.(' + _TBL + r')"',
             setup_text,
         )
     ]
+    # Collapse consecutive markers for the *same* table into one block boundary. A notebook
+    # may both assign `table_name = f"…X"` and later `saveAsTable(f"…X")` for the same X;
+    # without this the second marker would start a spurious empty block and split X's
+    # `withColumn`s. Keeping only the first marker per run means each table's columns stay
+    # attributed to it up to the *next distinct* table's marker.
+    markers: list[tuple[int, str | None]] = []
+    for pos, tbl in raw:
+        if not markers or markers[-1][1] != tbl:
+            markers.append((pos, tbl))
     markers.append((len(setup_text), None))
     gen: dict[str, set[str]] = {t: set() for t in source_tables}
     for i in range(len(markers) - 1):
@@ -145,7 +164,14 @@ def _generated_columns(setup_text: str, source_tables: set[str]) -> dict[str, se
         block = setup_text[start:end]
         cols = set(re.findall(r'withColumn\("(' + _COL + r')"', block))
         cols |= set(re.findall(r'\bAS\s+`(' + _COL + r')`', block))
-        cols |= set(re.findall(r'\bAS\s+(' + _TBL + r')\b', block))  # unquoted AS COL
+        # unquoted `AS COL` (raw spark.sql SELECT, e.g. a date dimension) — but NOT the
+        # `AS <TYPE>` of a CAST, which would spuriously add STRING/DATE/BIGINT/… to the
+        # generated set and could mask a real read column that happens to share that name.
+        cols |= {
+            c
+            for c in re.findall(r'\bAS\s+(' + _TBL + r')\b', block)
+            if c.upper() not in _SQL_TYPES
+        }
         gen[tbl] |= cols
     return gen
 

@@ -206,6 +206,10 @@ databricks workspace import "$DEST/SKILL.md" \
 
 # 2) references/ — all Markdown, nothing else, so upload the folder wholesale
 databricks workspace import-dir references "$DEST/references" --overwrite
+
+# 3) scripts/ — the helper scripts SKILL.md tells the agent to run (e.g. the
+#    setup-coverage check). Genie runs these with executeCode; don't skip them.
+databricks workspace import-dir scripts "$DEST/scripts" --overwrite
 ```
 
 Add `-p <profile>` to either command if you use a named CLI profile.
@@ -216,8 +220,8 @@ Add `-p <profile>` to either command if you use a named CLI profile.
 > Terraform state into the skills path. The references mention the examples as *repo*
 > pointers, not in-skill links.
 
-(In the UI you can instead **Import** → *File/Folder*, selecting `SKILL.md` and the
-`references/` folder.)
+(In the UI you can instead **Import** → *File/Folder*, selecting `SKILL.md`, the
+`references/` folder, and the `scripts/` folder.)
 
 **Genie picks it up automatically the next time you use it** (start a new chat thread
 after adding or changing a skill). Invoke it by describing a Matillion migration, or
@@ -319,9 +323,9 @@ the flow is: **upload your Matillion files, start a fresh chat, then prompt.**
    values — plus how to handle each hardcoded value / secret it surfaces. Answer with a
    namespace you have write access to and your preferred names.
 
-4. **Deploy it yourself with the CLI.** Genie *generates* the bundle in your Workspace,
-   but it can't deploy it — deploying runs the Databricks CLI (`databricks bundle
-   deploy`), which the in-workspace assistant does not execute for you. Pull the
+4. **Run the initial deploy yourself with the CLI.** Genie *generates* the bundle and can
+   run the setup notebook, but it can't run `databricks bundle deploy` — bundle commands
+   are outside its (job-scoped) CLI allow-list. So the **first** deploy is yours: pull the
    generated bundle to a machine with the [Databricks CLI](https://docs.databricks.com/en/dev-tools/cli/)
    and deploy from there:
 
@@ -331,18 +335,28 @@ the flow is: **upload your Matillion files, start a fresh chat, then prompt.**
    databricks workspace export-dir \
      "/Workspace/Users/$ME/matillion-migration/output" ./migrated-bundle
 
-   # Set the target host/warehouse in databricks.yml, then deploy + run
+   # Set the target host, then deploy + run (pass the config the skill asked you for)
    cd ./migrated-bundle
-   databricks bundle deploy -t dev
+   databricks bundle deploy -t dev --var="warehouse_id=<id>" --var="catalog=<cat>" --var="schema=<sch>"
    databricks bundle run <job_name> -t dev
    ```
 
    You need a Unity Catalog workspace and permission to create the Job (and pipeline, if
    one was emitted). See `references/deploy-and-validate.md`.
 
-5. **Validate.** Genie *can* run SQL, so you can ask it in-chat to run the validation
-   checklist (tables exist, row counts sane, an aggregate spot-check) against the
-   deployed tables — or run the queries yourself. See `references/deploy-and-validate.md`.
+5. **Let Genie iterate the Job to green (SQL layer).** Once the Job exists, Genie *can*
+   drive much of the fix loop itself: it triggers the deployed Job and inspects each
+   failed task's output via its job-scoped CLI, then fixes **transform-content** bugs
+   (SQL/notebook) by editing the deployed source in place and re-triggering — re-running
+   the setup notebook if a source table changed. Ask it to *"run the Job and fix failures
+   until it's green."* What it **can't** do in-loop is a **structural** change to
+   `resources/*.yml` (task graph, `run_if`, paths, serverless, params) — those need
+   another `bundle deploy` from you. See the capability table above.
+
+6. **Validate.** Genie can run SQL, so ask it in-chat to run the validation checklist
+   (tables exist, row counts sane, an aggregate spot-check) against the deployed tables —
+   and, if you provide expected output, to reconcile against it. See
+   `references/deploy-and-validate.md`.
 
 > **Tip:** if the assistant doesn't seem to be using the skill, confirm it's under
 > `.assistant/skills/matillion-to-databricks/` with `SKILL.md` at the top, and start a

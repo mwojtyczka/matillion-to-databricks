@@ -128,6 +128,35 @@ if not spark.catalog.tableExists(table_name):
     assert {"FULL_DATE", "WEEK_NUM"} <= gen["SI_DIM_DATE"]
 
 
+def test_cast_type_not_captured_as_generated_column():
+    # `CAST(NULL AS STRING) AS BANK_HOLIDAY_NAME` must yield BANK_HOLIDAY_NAME, not STRING.
+    setup = """
+table_name = f"{catalog}.{schema}.SI_DIM_DATE"
+if not spark.catalog.tableExists(table_name):
+    df = spark.sql("SELECT d AS FULL_DATE, CAST(NULL AS STRING) AS BANK_HOLIDAY_NAME FROM base")
+    df.write.saveAsTable(table_name)
+"""
+    gen = csc._generated_columns(setup, csc._source_tables(setup))["SI_DIM_DATE"]
+    assert "BANK_HOLIDAY_NAME" in gen
+    assert "STRING" not in gen  # CAST type must not masquerade as a generated column
+
+
+def test_dual_marker_same_table_not_split():
+    # A table that both assigns table_name AND saveAsTable(f"…SAME") must keep all its
+    # columns attributed to it (the second marker must not start a spurious empty block).
+    setup = """
+table_name = f"{catalog}.{schema}.SRC"
+if not spark.catalog.tableExists(table_name):
+    df = (dg.DataGenerator(spark, name="s", rows=5, seedColumnName="_seq")
+        .withColumn("A", "string")
+        .withColumn("B", "string")
+        .build())
+    df.write.saveAsTable(f"{catalog}.{schema}.SRC")
+"""
+    gen = csc._generated_columns(setup, csc._source_tables(setup))
+    assert gen["SRC"] == {"A", "B"}
+
+
 def test_select_star_read_is_ignored(tmp_path):
     # `SELECT *` is not an enumerated read node; it must not register (empty) columns.
     sql = "SELECT * FROM IDENTIFIER(:catalog || '.' || :schema || '.SRC_ORDERS')\n"
