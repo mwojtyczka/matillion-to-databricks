@@ -442,10 +442,10 @@ first, form one hypothesis at a time, don't shotgun-edit.
   output) and which **columns differ** on matched rows (`changed`), emitted as JSON. That per-row,
   per-column detail *is* your localization — it names the exact diverging rows and fields. Use
   **`abs_tolerance` / `rel_tolerance`** for the rounding/precision class below.
-  It's a `@register_rule("dataset")` check applied via `DQEngine` (split valid/quarantine like
-  any DQX gate) — **get the exact signature from the DQX docs / `dqx-apply-checks`, don't
-  hand-code the API from memory** (`compare_datasets` isn't in the DQX skills' examples yet;
-  it lives in `databricks.labs.dqx.check_funcs`).
+  It's a `@register_rule("dataset")` check applied via `DQEngine`. **`compare_datasets` isn't in
+  the DQX skills yet** (it lives in `databricks.labs.dqx.check_funcs`), so
+  `references/data-quality.md` carries a **worked reconciliation-notebook example** — use it;
+  confirm arg names in the DQX docs if your DQX version differs.
   - **No DQX available / a quick check** → schema (names + types) → `COUNT(*)` → a key diff
     (`EXCEPT` **both directions** on the PK, or a full-row hash) — report rows missing / extra /
     differing.

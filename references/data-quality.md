@@ -110,9 +110,58 @@ check (in `databricks.labs.dqx.check_funcs`) row-matches a Job output against a 
 table/DataFrame by primary key and reports per-row `row_missing` / `row_extra` and per-column
 `changed` detail, with `check_missing_records` and numeric `abs_tolerance` / `rel_tolerance`.
 That is the mechanism `SKILL.md` **Step 6b** uses to reconcile migrated output against expected
-output (only meaningful against real, not synthetic, source data). It's applied via `DQEngine`
-like any other check — **get its exact signature from the DQX docs / `dqx-apply-checks`; don't
-hardcode the API** (it isn't in the DQX skills' examples yet).
+output (only meaningful against real, not synthetic, source data).
+
+`compare_datasets` **isn't in the DQX skills' examples yet**, so — unlike other checks, where you
+invoke a DQX skill for the syntax — here is a worked reconciliation notebook. It uses the
+**metadata form** (`apply_checks_by_metadata` + `ref_dfs`), so nothing beyond `DQEngine` is
+imported. It is verified against `databricks-labs-dqx` as installed by the `%pip` below; if your
+DQX version has moved on, confirm the argument names in the [DQX docs](https://databrickslabs.github.io/dqx/).
+
+```python
+# Databricks notebook source
+# MAGIC %pip install databricks-labs-dqx
+# COMMAND ----------
+dbutils.library.restartPython()
+# COMMAND ----------
+from databricks.labs.dqx.engine import DQEngine
+from databricks.sdk import WorkspaceClient
+
+dbutils.widgets.text("catalog", "main"); dbutils.widgets.text("schema", "prisma")
+catalog = dbutils.widgets.get("catalog"); schema = dbutils.widgets.get("schema")
+
+output_df = spark.table(f"{catalog}.{schema}.CDM_PRISMA_RISKS")   # the migrated Job output
+gold_df   = spark.table("catalog_gold.schema_gold.CDM_PRISMA_RISKS")  # user-supplied golden set
+
+# One dataset-level compare_datasets check, keyed on the primary key.
+checks = [{
+    "criticality": "error",
+    "check": {
+        "function": "compare_datasets",
+        "arguments": {
+            "columns":     ["RISK_ID"],   # PK in the output   (matched to ref_columns BY POSITION)
+            "ref_columns": ["RISK_ID"],   # PK in the gold
+            "ref_df_name": "gold",        # keyed into ref_dfs below (or use "ref_table": "cat.sch.tbl")
+            "check_missing_records": True,           # full outer join → also flag rows missing from output
+            # "abs_tolerance": 0.01,                 # numeric tolerance for the rounding/precision class
+            # "exclude_columns": ["_loaded_at"],     # compared-out but still used for row matching
+        },
+    },
+}]
+
+dq = DQEngine(WorkspaceClient())
+result = dq.apply_checks_by_metadata(output_df, checks, ref_dfs={"gold": gold_df})
+
+# Rows that differ / are missing / are extra carry a JSON diff in `_errors`
+# ({"row_missing":..,"row_extra":..,"changed":{col:{df:..}}}) — that JSON is your localization.
+diffs = result.filter("_errors is not null")
+print("mismatched rows:", diffs.count())
+diffs.select("RISK_ID", "_errors").show(truncate=False)
+# reconciled when diffs.count() == 0 (or only signed-off exceptions remain)
+```
+
+Reconcile per output table; the printed `_errors` JSON names the diverging rows/columns, which
+drives the Step 6b localize → fix → re-run loop.
 
 ## Gotchas
 
