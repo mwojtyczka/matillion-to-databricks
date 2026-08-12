@@ -50,15 +50,40 @@ def _source_tables(setup_text: str) -> set[str]:
     return tabs
 
 
+def _cols_from_blob(cols_blob: str) -> list[str]:
+    """Extract column names from a read node's SELECT list.
+
+    Handles backticked (``COL``, ``r.`COL```) and bare (`COL`, `r.COL`) forms, stripping
+    any leading `alias.` qualifier so `SELECT r.STATUS, r.FROM_DATE FROM src r` still
+    yields `[STATUS, FROM_DATE]` (not silently zero — that silent skip would defeat the
+    whole check).
+    """
+    cols: list[str] = []
+    # backticked, optionally alias-qualified: `COL` or r.`COL`
+    for c in re.findall(r"(?:[A-Za-z_][A-Za-z0-9_]*\.)?`(" + _COL + r")`", cols_blob):
+        if c not in cols:
+            cols.append(c)
+    if cols:
+        return cols
+    # bare, comma-separated identifiers: COL or alias.COL
+    for tok in cols_blob.split(","):
+        tok = tok.strip()
+        tok = re.sub(r"^[A-Za-z_][A-Za-z0-9_]*\.", "", tok)  # drop leading alias.
+        if re.fullmatch(_COL, tok):
+            cols.append(tok)
+    return cols
+
+
 def _read_columns(files: list[str], source_tables: set[str]) -> dict[str, list[str]]:
     """Columns read from each source table across all transform files.
 
     Matches the read node `SELECT `a`, `b`, … FROM <source>` where <source> is either
-    a backticked name or an IDENTIFIER(:cat || '.' || :sch || '.NAME') expression.
+    a backticked name, a bare name (with optional alias), or an
+    IDENTIFIER(:cat || '.' || :sch || '.NAME') expression.
     """
     read: dict[str, list[str]] = {}
     # SELECT <cols> FROM <source>  — source referenced as IDENTIFIER(...'.NAME'),
-    # `NAME`, or a bare NAME; columns may be backticked or bare.
+    # `NAME`, or a bare NAME; columns may be backticked or bare, alias-qualified or not.
     from_clause = (
         r"FROM\s+(?:"
         r"IDENTIFIER\([^)]*\.(" + _TBL + r")'\)"          # IDENTIFIER(... '.NAME')
@@ -78,9 +103,16 @@ def _read_columns(files: list[str], source_tables: set[str]) -> dict[str, list[s
             # a read node enumerates its columns.
             if "*" in cols_blob or "(" in cols_blob:
                 continue
-            cols = re.findall(r"`(" + _COL + r")`", cols_blob)
-            if not cols:  # bare, comma-separated identifiers
-                cols = [c.strip() for c in cols_blob.split(",") if re.fullmatch(_COL, c.strip())]
+            cols = _cols_from_blob(cols_blob)
+            if not cols:
+                # matched a read of a source table but couldn't extract columns — surface
+                # it rather than silently treating the table as fully covered.
+                print(
+                    f"WARNING: matched `FROM {tbl}` in {os.path.relpath(f)} but extracted "
+                    f"0 columns from its SELECT list — coverage for {tbl} may be understated.",
+                    file=sys.stderr,
+                )
+                continue
             read.setdefault(tbl, [])
             for c in cols:
                 if c not in read[tbl]:
