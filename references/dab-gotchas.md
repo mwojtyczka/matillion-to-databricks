@@ -109,6 +109,48 @@ A `.py` used as a `notebook_task` must start with `# Databricks notebook source`
 magics on `# MAGIC` lines (`# MAGIC %pip install …`). A bare `%pip` line or a missing first
 line makes the file not a notebook. See `references/data-quality.md` for the DQX example.
 
+**`# MAGIC` lines must live in a magic cell.** A `# MAGIC %md`/`%pip` line only works when its
+cell is a magic cell — i.e. it's set off by `# COMMAND ----------` separators. If a generator
+sprinkles `# MAGIC %md` "section header" lines into the middle of one big Python cell (no
+`# COMMAND ----------` around them), the notebook runs the whole thing as Python and the magic
+errors at run time: `UsageError: Line magic function %md not found`. Fix: either give the
+notebook real `# COMMAND ----------` cell boundaries around each `# MAGIC` block, or — for
+decorative markdown — drop the `# MAGIC` lines and use plain `#` comments. (`%pip install` that
+the code actually needs must be a real magic cell, not a comment.)
+
+## `${var}` inside a YAML flow-map breaks the parse
+
+A task's `parameters:` / `base_parameters:` written as an **inline flow-map** with bundle-var
+values fails to load: `yaml: did not find expected ',' or '}'`. The `}` inside `${var.x}`
+closes the flow-map early.
+
+```yaml
+# ❌ flow-map + ${var} — the } in ${var.catalog} ends the map
+    parameters: { catalog: ${var.catalog}, schema: ${var.schema} }
+# ✅ block style
+    parameters:
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+```
+
+`depends_on: [{ task_key: x }]` is fine (no `${}`); the trap is specifically `${…}` values in
+`{ … }`. When in doubt, use block style for anything holding `${var...}`.
+
+## Bundle files don't sync when the bundle dir is git-ignored
+
+`databricks bundle deploy` syncs the bundle's `src/` etc. respecting `.gitignore` **and
+`.git/info/exclude`**. If the bundle lives under an ignored path (customer data kept out of a
+repo, a scratch dir), the sync finds nothing — you get `Warning: There are no files to sync`
+and tasks fail at run time with `notebook <…> not found`. Confirm with
+`git check-ignore <bundle>/databricks.yml`; if ignored, force-include the sources:
+
+```yaml
+# databricks.yml
+sync:
+  include:
+    - src/**
+```
+
 ## Use serverless — don't emit a classic `new_cluster`
 
 Emit tasks on **serverless** compute (the recommended default): a `notebook_task` with **no**

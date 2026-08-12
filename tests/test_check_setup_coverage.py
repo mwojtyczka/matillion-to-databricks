@@ -186,3 +186,66 @@ def test_select_star_read_is_ignored(tmp_path):
     tables = csc._source_tables(setup_text)
     read = csc._read_columns([str(bundle / "src" / "sql" / "t.sql")], tables)
     assert "SRC_ORDERS" not in read  # nothing enumerated → table absent, not falsely covered
+
+
+# --- single-var f-string convention (notebook style: IQ = f"{catalog}.{schema}") ---------
+
+def test_source_tables_single_var_fstring_and_create_or_replace():
+    # Notebook bundles precompute a base var (P = f"{catalog}.{schema}") and write
+    # f"{P}.TABLE"; and CREATE OR REPLACE TABLE {M}.X for a raw-SQL date dimension.
+    setup = (
+        'table_name = f"{P}.SRC_ORDERS"\n'
+        'df.write.saveAsTable(f"{IQ}.AD_ORG")\n'
+        'spark.sql(f"CREATE OR REPLACE TABLE {M}.SI_DIM_DATE AS SELECT 1 AS X")\n'
+    )
+    assert csc._source_tables(setup) == {"SRC_ORDERS", "AD_ORG", "SI_DIM_DATE"}
+
+
+def test_single_var_fstring_read_and_coverage(tmp_path):
+    # Setup creates f"{P}.SRC_ORDERS"; a notebook reads it via spark.sql(f"… FROM {P}.SRC_ORDERS").
+    setup = (
+        'table_name = f"{P}.SRC_ORDERS"\n'
+        'if not spark.catalog.tableExists(table_name):\n'
+        '    df = (dg.DataGenerator(spark, name="o", rows=5, seedColumnName="_seq")\n'
+        '        .withColumn("ID", "string").withColumn("STATUS", "string").build())\n'
+        '    df.write.saveAsTable(f"{P}.SRC_ORDERS")\n'
+    )
+    (tmp_path / "src" / "notebooks").mkdir(parents=True)
+    nb = '# Databricks notebook source\nspark.sql(f"""SELECT `ID`, `STATUS` FROM {P}.SRC_ORDERS""")\n'
+    (tmp_path / "src" / "notebooks" / "t.py").write_text(nb)
+    tables = csc._source_tables(setup)
+    assert "SRC_ORDERS" in tables
+    read = csc._read_columns([str(tmp_path / "src" / "notebooks" / "t.py")], tables)
+    assert read["SRC_ORDERS"] == ["ID", "STATUS"]          # read node parsed via {P}.NAME
+    gen = csc._generated_columns(setup, tables)
+    assert {"ID", "STATUS"} <= gen["SRC_ORDERS"]           # generated cols attributed correctly
+
+
+def test_single_var_fstring_does_not_register_reads_or_paths():
+    # A bare single-var f-string that is a READ or a PATH must NOT be registered as a source
+    # table the setup owns — only create-intent (table_name= / saveAsTable / CREATE) counts.
+    setup = (
+        'ref = spark.read.table(f"{P}.LOOKUP")\n'          # a read, not a create
+        'raw = spark.read.csv(f"{base}.csv")\n'            # a path-like f-string
+        'df.write.saveAsTable(f"{P}.REAL_SRC")\n'          # the only real create
+    )
+    assert csc._source_tables(setup) == {"REAL_SRC"}       # LOOKUP / csv must not appear
+
+
+def test_single_var_fstring_missing_column_detected(tmp_path):
+    # A column read but not generated must still be flagged under the single-var convention.
+    setup = (
+        'table_name = f"{P}.SRC_ORDERS"\n'
+        'if not spark.catalog.tableExists(table_name):\n'
+        '    df = (dg.DataGenerator(spark, name="o", rows=5, seedColumnName="_seq")\n'
+        '        .withColumn("ID", "string").build())\n'
+        '    df.write.saveAsTable(f"{P}.SRC_ORDERS")\n'
+    )
+    (tmp_path / "src" / "notebooks").mkdir(parents=True)
+    nb = '# Databricks notebook source\nspark.sql(f"SELECT `ID`, `STATUS` FROM {P}.SRC_ORDERS")\n'
+    (tmp_path / "src" / "notebooks" / "t.py").write_text(nb)
+    tables = csc._source_tables(setup)
+    read = csc._read_columns([str(tmp_path / "src" / "notebooks" / "t.py")], tables)
+    gen = csc._generated_columns(setup, tables)
+    missing = [c for c in read["SRC_ORDERS"] if c not in gen.get("SRC_ORDERS", set())]
+    assert missing == ["STATUS"]

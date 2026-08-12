@@ -16,7 +16,7 @@ This file covers **how DQX fits into a Matillion migration**. It deliberately do
 | Profile a table and generate candidate rules | `dqx-profile-and-generate` | [profiling](https://databrickslabs.github.io/dqx/docs/guide/profiling) |
 | Load/save checks (YAML / volume / workspace / Delta) | `dqx-storage` | [checks storage](https://databrickslabs.github.io/dqx/docs/guide/quality_checks_storage) |
 
-DQX skills live at <https://github.com/databrickslabs/dqx/tree/main/skills>. When you need to write a check, invoke the relevant DQX skill rather than guessing the API.
+DQX skills live at <https://github.com/databrickslabs/dqx/tree/main/skills>. When you need to write a check, invoke the relevant DQX skill rather than guessing the API. **If the DQX skills aren't installed in your runtime** (they're a one-time user install, not something to set up mid-migration), read the linked docs instead — never hardcode the API from memory. You may suggest the user install the DQX skills for a smoother pass.
 
 ## When a migration needs DQX
 
@@ -102,6 +102,17 @@ quarantine_df.write.mode("overwrite").saveAsTable(f"{catalog}.{schema}.sales_sum
 ## DQX inside a Lakeflow pipeline
 
 If a transform *independently* lands on Lakeflow (because it's incremental/streaming — see `references/orchestration/run-transformation.md`), you can still use DQX inside the pipeline instead of native `EXPECT` expectations — DQX gives you the same quarantine/annotation model with richer built-in checks and reusable, storable rule sets. Lakeflow expectations remain a valid option there, but **DQX is the default quality mechanism across the whole migration**, so the checks look the same whether the checked table was produced by a SQL task, a notebook, or a pipeline. (The DQX code itself always runs as Python — a notebook task, or inside the pipeline — never in a SQL task.)
+
+## DQX also powers gold reconciliation (SKILL.md Step 6b)
+
+Beyond quality *gates*, DQX does **dataset comparison**: its dataset-level **`compare_datasets`**
+check (in `databricks.labs.dqx.check_funcs`) row-matches a Job output against a **golden**
+table/DataFrame by primary key and reports per-row `row_missing` / `row_extra` and per-column
+`changed` detail, with `check_missing_records` and numeric `abs_tolerance` / `rel_tolerance`.
+That is the mechanism `SKILL.md` **Step 6b** uses to reconcile migrated output against expected
+output (only meaningful against real, not synthetic, source data). It's applied via `DQEngine`
+like any other check — **get its exact signature from the DQX docs / `dqx-apply-checks`; don't
+hardcode the API** (it isn't in the DQX skills' examples yet).
 
 ## Gotchas
 

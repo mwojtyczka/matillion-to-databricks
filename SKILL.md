@@ -421,20 +421,57 @@ This is the default, not an extra. The mechanics (they matter — reinventing th
 
 A green run proves the Job *executes*; it does not prove the results are *correct*. If the
 user provides **expected output** — a golden table/file, or a spec of row counts + key
-aggregates — reconcile against it after the Job is green:
+aggregates — run a **reconciliation loop** after the Job is green, the value-level twin of the
+run-to-green loop (Step 6a): **reconcile → localize the divergence → fix the transform →
+re-run → re-reconcile, repeating until every table matches (or only signed-off exceptions
+remain).** Use **`superpowers:systematic-debugging`** for the tracing discipline — reconcile
+first, form one hypothesis at a time, don't shotgun-edit.
 
 - **Only meaningful against real (or user-supplied) source data.** The synthetic setup
   notebook (Step 5c) fabricates *random* stand-in data, so migrated values won't match the
   real Matillion output — with synthetic data you can only check schema/shape, not values.
-  Run value reconciliation when the Job ran against **real sources** or a user-supplied
+  Run value reconciliation only when the Job ran against **real sources** or a user-supplied
   input+expected pair.
-- **Golden table/file** → diff per output table: same schema (column names + types), same
-  row count, and a key-based value comparison (`EXCEPT`/anti-join on the primary key, or a
-  full-row hash) — report any rows that differ, are missing, or are extra.
-- **Row-count + key-aggregate spec** → check each output table's `COUNT(*)` and the
-  specified aggregates (`SUM`/`MIN`/`MAX`/`COUNT(DISTINCT …)` of the named columns) equal
-  the expected values; report every mismatch with expected-vs-actual.
-- **A mismatch is a migration bug, usually a semantic dialect difference** (rounding,
-  null-handling, date boundaries, join multiplicity, `QUALIFY`/dedupe) — trace it to the
-  transform and fix, then re-run and re-reconcile. Report the final reconciliation result;
-  don't claim fidelity you didn't measure.
+- **Compare, per output table — prefer DQX `compare_datasets`.** The migration already uses
+  DQX (Step 5c, `references/data-quality.md`), so reconcile a golden table with its
+  **dataset-level `compare_datasets` check** rather than hand-rolled SQL. It does a **row-level
+  comparison**: row-match the Job output against the **gold** (`ref_table=` the golden table, or
+  `ref_df_name=` a loaded DataFrame) on the primary-key `columns`/`ref_columns`, and it flags,
+  per row, which rows are **missing on either side** (`row_missing` / `row_extra` — set
+  **`check_missing_records=True`** for the full outer join that also finds rows missing from the
+  output) and which **columns differ** on matched rows (`changed`), emitted as JSON. That per-row,
+  per-column detail *is* your localization — it names the exact diverging rows and fields. Use
+  **`abs_tolerance` / `rel_tolerance`** for the rounding/precision class below.
+  It's a `@register_rule("dataset")` check applied via `DQEngine` (split valid/quarantine like
+  any DQX gate) — **get the exact signature from the DQX docs / `dqx-apply-checks`, don't
+  hand-code the API from memory** (`compare_datasets` isn't in the DQX skills' examples yet;
+  it lives in `databricks.labs.dqx.check_funcs`).
+  - **No DQX available / a quick check** → schema (names + types) → `COUNT(*)` → a key diff
+    (`EXCEPT` **both directions** on the PK, or a full-row hash) — report rows missing / extra /
+    differing.
+  - **Row-count + key-aggregate spec** → each table's `COUNT(*)` and the named
+    `SUM`/`MIN`/`MAX`/`COUNT(DISTINCT …)` vs expected; report every mismatch expected-vs-actual.
+- **Localize before you fix — this is the hard part.** Narrow a mismatch to the exact
+  *field + transform* before touching code, by widening the diff stepwise: schema → row count
+  → which **keys** differ → which **columns** differ on those keys (DQX `compare_datasets`
+  hands you this row+column breakdown directly via its `changed`/`row_missing`/`row_extra`
+  detail; otherwise `EXCEPT` both ways). If the
+  final table doesn't localize it, reconcile an **intermediate** output — materialize the
+  suspect CTE or the upstream `CDM_*` table and diff *that* — and **bisect the chain** until you
+  find the component that introduces the divergence. A whole-table hash mismatch with an
+  unknown cause is not yet actionable; keep narrowing.
+- **Fix the class, not the instance** (as in 6a). A value mismatch is almost always a
+  **semantic dialect difference**: rounding / precision (int vs decimal division), null-handling
+  (`NULL` vs `''`, `coalesce` defaults), date/timestamp boundaries and truncation, join
+  **multiplicity** (fan-out duplicating rows), `QUALIFY`/`ROW_NUMBER` dedupe ordering, or
+  case/collation. Fix the translation so it is *generally* correct, then re-run.
+- **Stop / escalate rules.** Done = every table matches, or the only remaining diffs are
+  exceptions the user has signed off. **Escalate — don't guess —** when a difference is a
+  genuine **business/semantic** decision (the source data has drifted since the golden was
+  captured; Matillion did something intentional you can't infer from the export). **Never
+  overfit to the gold:** a fix must be a defensible general translation — not a hardcoded
+  value, a `WHERE` that just drops the offending rows, or logic reverse-engineered only to
+  make this one table match. If a fix doesn't change the diff, stop and report rather than
+  looping (same rule as 6a).
+- **Report the final reconciliation result** — which tables matched, which diffs remain, and
+  what each remaining diff is. Don't claim fidelity you didn't measure.

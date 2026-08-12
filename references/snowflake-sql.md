@@ -111,6 +111,12 @@ Only the idioms actually seen in real exports are listed; search the SQL for oth
 | `NUMBER(38,0)` DDL type | `DECIMAL(38,0)` or `BIGINT` | |
 | `CAST(x AS VARCHAR)` (no length) | `CAST(x AS STRING)` | bare `VARCHAR` fails on Databricks (`DATATYPE_MISSING_SIZE` — needs `VARCHAR(n)`); use `STRING`. Same for `CHAR`/`TEXT`. |
 | sequences / `seq.NEXTVAL` | `GENERATED ALWAYS AS IDENTITY` column | model as a Delta identity column |
+| `TIMESTAMPADD('minute', n, ts)` / `TIMESTAMPDIFF('minute', a, b)` | `timestampadd(MINUTE, n, ts)` / `timestampdiff(MINUTE, a, b)` | Databricks *has* both functions, but the unit is an **unquoted keyword** (`MINUTE`, `HOUR`, …) — the Snowflake **quoted** `'minute'` errors. (Note `date_trunc('minute', ts)` keeps its quoted unit — different function.) |
+| `TRY_TO_DOUBLE(x)` / `TRY_TO_NUMBER(x)` | `try_cast(x AS DOUBLE)` / `try_cast(x AS DECIMAL(p,s))` | non-throwing cast |
+| `SELECT * EXCLUDE (c)` / `p.* EXCLUDE (c)` | `SELECT * EXCEPT (c)` / `p.* EXCEPT (c)` | Snowflake spells the star-minus-columns `EXCLUDE`; Databricks is `EXCEPT` (and only remove columns that exist — see the semantic note below) |
+| `CREATE OR REPLACE TRANSIENT TABLE t` / `TEMPORARY TABLE t` | `CREATE OR REPLACE TABLE t` (or `TEMPORARY VIEW` for session scratch) | `TRANSIENT` is Snowflake-only; Databricks has **no session temp *table*** — use a plain managed table you `DROP` after, or a `CREATE OR REPLACE TEMPORARY VIEW` |
+| `SELECT … FROM DUAL` | `SELECT …` (no `FROM`) | Databricks has no `DUAL`; a constant-only SELECT needs no FROM |
+| `WITH RECURSIVE … (generate a series)` | `SELECT explode(sequence(start, stop, step)) AS x` | Databricks recursive CTEs are limited/newer; for a time-interval or number series use `sequence()`+`explode` (see Snowpark section) |
 
 ## Semantic differences (not just function renames)
 
@@ -123,6 +129,15 @@ These bite even when every function name is right — they're behavioral, and Ma
   result have two `COL`s. Fix with **`SELECT t.* EXCEPT (COL), <expr> AS COL`** (list every
   re-derived column in the `EXCEPT`). This is one of the most common failures on a real
   migration — expect it wherever a transform overwrites an input column.
+- **The mirror bug: `SELECT * EXCEPT (col), <expr> AS col` where `col` does NOT yet exist.**
+  `EXCEPT` only removes columns *already in the FROM relation*. When a calculator adds a
+  **brand-new** column (or one created later in the CTE chain — a `TIMESTAMPADD`-derived
+  bucket, a window column, an org-structure key), listing it in `EXCEPT` fails with
+  `UNRESOLVED_COLUMN` on the `EXCEPT` list itself. Rule: **new column → plain `SELECT *,
+  <expr> AS newcol` (no `EXCEPT`); overwrite of an existing column → `SELECT * EXCEPT (col),
+  <expr> AS col`.** Over-applying `EXCEPT` defensively is the most common slip when
+  translating a chain of "calculator" components that each *add* columns — it breaks every
+  such step.
 - **`UPDATE … SET … FROM <other_table>` → `MERGE`.** Snowflake (and Matillion `sql-executor`
   steps) do correlated cross-table updates with `UPDATE t SET … FROM s WHERE t.k = s.k`.
   Databricks **does not support `UPDATE … FROM`** (`Syntax error at or near 'FROM'`) — rewrite
@@ -222,6 +237,38 @@ This is **not** a SQL task — it's imperative Python, so on Databricks it becom
 - A procedure that just loops issuing DDL (like the example) is usually clearer rewritten
   as ordinary notebook cells or a parameterized loop — migrate by **intent**, not a
   line-by-line port of the Snowpark scaffolding.
+
+### Dynamic-SQL procedures: discovery + pivot loops
+
+Real Snowpark procedures often **introspect the catalog and build SQL dynamically** — e.g.
+"find every raw table matching a pattern, union them, pivot per group". Port the *loop* to
+Python that emits `spark.sql(...)`, and translate these constructs (all seen in a real
+migration):
+
+- **Recursive-CTE series → `sequence()` + `explode()`.** A `WITH RECURSIVE … TIMESTAMPADD(…)`
+  time-interval (or number) generator becomes one statement:
+  ```python
+  spark.sql(f"""CREATE OR REPLACE TABLE {IQL}.intervals AS
+      SELECT explode(sequence(to_timestamp('2021-10-07 00:00:00'),
+             date_trunc('DAY', current_timestamp()) - INTERVAL 15 MINUTES,
+             INTERVAL 15 MINUTES)) AS time_interval""")
+  ```
+- **`information_schema` discovery must fold case.** UC stores unquoted names **lower-case**,
+  so a Snowflake `WHERE table_name LIKE 'ABERFELDY_%'` (or the big `CASE WHEN table_name
+  LIKE 'X_%'` that derives a site group) matches **nothing** and the lookup comes back
+  empty. Wrap the compared column in **`UPPER(table_name)`** everywhere the pattern is
+  upper-case. `information_schema` is **per-catalog**: `FROM IDENTIFIER(:catalog ||
+  '.information_schema.tables') WHERE table_schema = :schema`.
+- **Snowflake `WHERE startswith(TABLE_NAME, "ALIAS")` self-reference → outer query.** When the
+  filter references a column *aliased in the same SELECT* (the lateral-alias rule, but in
+  `WHERE`), wrap the derivation in an inner subquery and filter in the outer.
+- **Non-materialized output `VIEW` → keep its backing tables.** If the procedure ends by
+  `CREATE VIEW … AS <join over a generated interval table>`, do **not** drop that interval
+  table in cleanup — a view with a dropped dependency fails at query time with
+  `UC_DEPENDENCY_DOES_NOT_EXIST`. (Materialized `CREATE TABLE AS` outputs can drop their
+  staging freely.)
+- Everything inside the dynamically-built SQL still needs the dialect fixes above
+  (`TIMESTAMPADD` keyword unit, `TRY_TO_DOUBLE`→`try_cast`, `* EXCLUDE`→`* EXCEPT`, `''`→`'`).
 
 ## Other Snowflake-isms to watch
 

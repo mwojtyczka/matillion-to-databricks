@@ -53,22 +53,29 @@ _SQL_TYPES = {
 def _source_tables(setup_text: str) -> set[str]:
     """Tables the setup notebook creates.
 
-    Handles the three write styles seen in real bundles:
-      table_name = f"{catalog}.{schema}.SOURCE"      (namespaced var)
-      saveAsTable(f"{catalog}.{schema}.SOURCE")       (namespaced inline)
-      saveAsTable("source") / CREATE TABLE source     (bare name + a separate
-                                                        `USE CATALOG/SCHEMA`)
+    Handles the write styles seen in real bundles:
+      table_name = f"{catalog}.{schema}.SOURCE"      (two namespace vars)
+      table_name = f"{P}.SOURCE" / f"{IQ}.SOURCE"    (one precomputed "catalog.schema" base var)
+      saveAsTable(f"{catalog}.{schema}.SOURCE")       (namespaced inline, either form)
+      saveAsTable("source") / CREATE [OR REPLACE] TABLE [ {var}. ]source  (bare or var-prefixed)
     """
+    _V = r"[A-Za-z_][A-Za-z0-9_]*"   # a Python var name inside an f-string {…}
     tabs: set[str] = set()
-    # table_name = f"{catalog}.{schema}.SOURCE"   (any catalog/schema var)
-    tabs |= set(re.findall(r'f"\{[a-z_]+\}\.\{[a-z_]+\}\.(' + _TBL + r')"', setup_text))
-    # .saveAsTable(f"{catalog}.{schema}.SOURCE")
-    tabs |= set(re.findall(r'saveAsTable\(f"\{[a-z_]+\}\.\{[a-z_]+\}\.(' + _TBL + r')"', setup_text))
+    # table_name = f"{catalog}.{schema}.SOURCE"  and  saveAsTable(f"{catalog}.{schema}.SOURCE")
+    tabs |= set(re.findall(r'f"\{' + _V + r'\}\.\{' + _V + r'\}\.(' + _TBL + r')"', setup_text))
+    tabs |= set(re.findall(r'saveAsTable\(f"\{' + _V + r'\}\.\{' + _V + r'\}\.(' + _TBL + r')"', setup_text))
+    # single-var f-string (P = a precomputed catalog.schema base) — notebook style.
+    # Anchor to CREATE-INTENT only (`table_name = f"{P}.X"` / `saveAsTable(f"{P}.X")`); a bare
+    # `f"{P}.X"` would also match reads (`spark.read.table(f"{P}.LOOKUP")`) and paths
+    # (`f"{base}.csv"`), falsely registering tables the setup never creates.
+    tabs |= set(re.findall(r'table_name\s*=\s*f"\{' + _V + r'\}\.(' + _TBL + r')"', setup_text))
+    tabs |= set(re.findall(r'saveAsTable\(f"\{' + _V + r'\}\.(' + _TBL + r')"', setup_text))
     # bare .saveAsTable("source")  — unqualified, relies on a separate USE CATALOG/SCHEMA
     tabs |= set(re.findall(r'saveAsTable\(["\'](' + _TBL + r')["\']\)', setup_text))
-    # bare CREATE TABLE [IF NOT EXISTS] source  (SQL-built source tables)
-    tabs |= set(re.findall(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(' + _TBL + r')\b',
-                           setup_text, re.IGNORECASE))
+    # CREATE [OR REPLACE] TABLE [IF NOT EXISTS] [ {var}. ] source  (bare or single-var-prefixed)
+    tabs |= set(re.findall(
+        r'CREATE\s+(?:OR\s+REPLACE\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\{' + _V + r'\}\.)?(' + _TBL + r')\b',
+        setup_text, re.IGNORECASE))
     return tabs
 
 
@@ -106,11 +113,14 @@ def _read_columns(files: list[str], source_tables: set[str]) -> dict[str, list[s
     read: dict[str, list[str]] = {}
     # SELECT <cols> FROM <source>  — source referenced as IDENTIFIER(...'.NAME'),
     # `NAME`, or a bare NAME; columns may be backticked or bare, alias-qualified or not.
+    _V = r"[A-Za-z_][A-Za-z0-9_]*"   # a Python var name inside an f-string {…}
     from_clause = (
         r"FROM\s+(?:"
-        r"IDENTIFIER\([^)]*\.(" + _TBL + r")'\)"          # IDENTIFIER(... '.NAME')
-        r"|`(" + _TBL + r")`"                              # `NAME`
-        r"|(" + _TBL + r")\b"                              # bare NAME
+        r"IDENTIFIER\([^)]*\.(" + _TBL + r")'\)"                          # IDENTIFIER(... '.NAME')
+        r"|\{" + _V + r"\}\.\{" + _V + r"\}\.(" + _TBL + r")\b"           # f"{cat}.{sch}.NAME"
+        r"|\{" + _V + r"\}\.(" + _TBL + r")\b"                            # f"{P}.NAME" (notebook style)
+        r"|`(" + _TBL + r")`"                                            # `NAME`
+        r"|(" + _TBL + r")\b"                                            # bare NAME
         r")"
     )
     sel_re = re.compile(r"SELECT\s+(.+?)\s+" + from_clause, re.IGNORECASE | re.DOTALL)
@@ -118,7 +128,7 @@ def _read_columns(files: list[str], source_tables: set[str]) -> dict[str, list[s
         text = _read(f)
         for m in sel_re.finditer(text):
             cols_blob = m.group(1)
-            tbl = m.group(2) or m.group(3) or m.group(4)
+            tbl = m.group(2) or m.group(3) or m.group(4) or m.group(5) or m.group(6)
             if tbl not in source_tables:
                 continue
             # only trust an explicit column list (not `SELECT *` / expressions);
@@ -155,13 +165,22 @@ def _generated_columns(setup_text: str, source_tables: set[str]) -> dict[str, se
     block we collect `.withColumn("X", …)` (dbldatagen) and `AS X` / `` AS `X` `` (raw
     spark.sql SELECT, e.g. a date dimension) — excluding CAST `AS <TYPE>` targets.
     """
+    _V = r"[A-Za-z_][A-Za-z0-9_]*"   # a Python var name inside an f-string {…}
     # (position, table, kind) for every marker, kind ∈ {"start","end"}
     marks: list[tuple[int, str, str]] = []
-    for m in re.finditer(r'table_name\s*=\s*f"\{[a-z_]+\}\.\{[a-z_]+\}\.(' + _TBL + r')"', setup_text):
+    # start markers: table_name = f"{cat}.{sch}.X" / f"{P}.X"  and  CREATE [OR REPLACE] TABLE [{var}.]X
+    for m in re.finditer(r'table_name\s*=\s*f"\{' + _V + r'\}\.\{' + _V + r'\}\.(' + _TBL + r')"', setup_text):
         marks.append((m.start(), m.group(1), "start"))
-    for m in re.finditer(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(' + _TBL + r')\b', setup_text, re.IGNORECASE):
+    for m in re.finditer(r'table_name\s*=\s*f"\{' + _V + r'\}\.(' + _TBL + r')"', setup_text):
         marks.append((m.start(), m.group(1), "start"))
-    for m in re.finditer(r'saveAsTable\(f"\{[a-z_]+\}\.\{[a-z_]+\}\.(' + _TBL + r')"', setup_text):
+    for m in re.finditer(
+        r'CREATE\s+(?:OR\s+REPLACE\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\{' + _V + r'\}\.)?(' + _TBL + r')\b',
+        setup_text, re.IGNORECASE):
+        marks.append((m.start(), m.group(1), "start"))
+    # end markers: saveAsTable(f"{cat}.{sch}.X") / f"{P}.X" / "x"
+    for m in re.finditer(r'saveAsTable\(f"\{' + _V + r'\}\.\{' + _V + r'\}\.(' + _TBL + r')"', setup_text):
+        marks.append((m.start(), m.group(1), "end"))
+    for m in re.finditer(r'saveAsTable\(f"\{' + _V + r'\}\.(' + _TBL + r')"', setup_text):
         marks.append((m.start(), m.group(1), "end"))
     for m in re.finditer(r'saveAsTable\(["\'](' + _TBL + r')["\']\)', setup_text):
         marks.append((m.start(), m.group(1), "end"))

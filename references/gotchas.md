@@ -63,6 +63,30 @@ The **catalog** must already exist — creating catalogs needs metastore-admin r
 
 A transform that reads `FROM raw_orders` (or a Snowflake `RAW.*` table) will fail with `TABLE_OR_VIEW_NOT_FOUND` if nothing produces that table. Matillion pipelines often **read source tables populated by ingestion outside the pipeline** — the migrated Job inherits that assumption. Before claiming a Job runs end-to-end, check every `FROM`/`JOIN` resolves to either a table an upstream task creates or a real pre-existing source. If the source data genuinely lives elsewhere, point the reads at it (via `catalog`/`schema` params); only seed fixture tables for a self-contained demo, and label them as such. (Both worked examples add a first `seed`/dimension task for exactly this reason.)
 
+## A pre-existing schema silently defeats the setup notebook's skip-guard
+
+The setup notebook guards each fabricated source with `if not spark.catalog.tableExists(...)`
+so it no-ops against real data. But on a **shared workspace** (e.g. a demo metastore) the
+target `catalog.schema` may already exist with **differently-shaped** tables of the same name
+(a colleague's demo, or your own earlier run of a *different* version). The guard then skips
+creation, and the transforms run against the wrong tables — surfacing as a confusing
+`UNRESOLVED_COLUMN`/`AMBIGUOUS_REFERENCE` far from the real cause (the "suggested columns" in
+the error won't match the source you expected). **For a verification run, deploy to a
+dedicated, uniquely-named schema** (`--var schema=<something_unique>`) rather than a generic
+`main.<common_name>`; check `databricks schemas list <catalog>` first. Only trust the
+skip-guard when you know the pre-existing tables are the *real* sources with the expected
+schema.
+
+## A view whose backing table is dropped fails at query time
+
+If a transform's output is a **non-materialized `VIEW`** built over a scratch/interval table
+(common when porting a Snowpark procedure that ends in `CREATE VIEW … AS <join over a
+generated table>`), do **not** drop that backing table in cleanup — the view keeps a hard
+dependency and querying it fails with `[UC_DEPENDENCY_DOES_NOT_EXIST]`. Either keep the
+backing table (refresh it with `CREATE OR REPLACE` each run) or materialize the output as a
+`CREATE OR REPLACE TABLE … AS` so it has no live dependency. Materialized outputs may drop
+their staging freely; views may not.
+
 ## Seed data in `sql-executor` is not a transformation
 
 `CREATE OR REPLACE TABLE ... INSERT INTO ... VALUES (...)` blocks are demo/fixture data. Keep them as a Job setup SQL task. Do **not** model them as Lakeflow pipeline tables — the pipeline should read them as sources, not own them.
