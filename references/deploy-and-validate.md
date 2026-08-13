@@ -41,8 +41,10 @@ things you already know:
 >   --var="catalog=<catalog>" \
 >   --var="schema=<schema>" \
 >   --var="warehouse_id=<warehouse_id>"
-> # 2. REQUIRED for a test run — create synthetic source tables by running the setup
-> #    notebook once (it is NOT a Job task). Skip only if the real source tables exist.
+> # 2. ONLY IF a synthetic setup notebook was emitted (the "fabricate" branch of Step 1) —
+> #    create the synthetic source tables by running it once (it is NOT a Job task); skip
+> #    if the real source tables already exist. Omit this line entirely when the migration
+> #    targets real, existing tables (no notebook was emitted).
 > #    Open src/setup/00_generate_source_data.py, set the catalog/schema widgets, Run All.
 > # 3. Run the Job
 > databricks bundle run <job_name> -t dev --profile <profile> \
@@ -52,11 +54,12 @@ things you already know:
 > `databricks.yml`, or ensure your `--profile` points there.) Tell me once it's deployed
 > and I'll run the validation checks.
 
-**Between deploy and run, the setup notebook must be run once** (step 2 above) unless the
-real source tables already exist — it populates the source/input tables the Job reads
-(`src/setup/00_generate_source_data.py`, a manual step, not a Job task). Skipping it makes
-the first `bundle run` fail at the first read with `TABLE_OR_VIEW_NOT_FOUND`. See
-`SKILL.md` → Step 5c/Step 6.
+**If a synthetic setup notebook was emitted, it must be run once between deploy and run**
+(step 2 above) unless the real source tables already exist — it populates the source/input
+tables the Job reads (`src/setup/00_generate_source_data.py`, a manual step, not a Job task).
+Skipping it makes the first `bundle run` fail at the first read with `TABLE_OR_VIEW_NOT_FOUND`.
+**When the migration targets real, existing tables no notebook is emitted** — drop step 2 and
+just confirm the tables are present. See `SKILL.md` → Step 5c/Step 6.
 
 Fill every `--var` with the value the user confirmed in Step 5. `warehouse_id` has no
 default and **must** be supplied — omitting it is the most common deploy failure. If they

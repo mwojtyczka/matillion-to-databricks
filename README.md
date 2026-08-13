@@ -45,22 +45,23 @@ What the agent does, in order. Each step links to its detail in `SKILL.md`.
 
 | # | Step | What happens |
 |---|---|---|
-| 1 | [Inventory](SKILL.md#step-1--inventory-the-matillion-project) | Detect export format + warehouse backend. List jobs, variables, secrets, hardcoded values. |
+| 1 | [Inventory](SKILL.md#step-1--inventory-the-matillion-project) | Detect export format + warehouse backend. List jobs, variables, secrets, hardcoded values. Ask: real source data (and where) or fabricate synthetic? |
 | 2 | [Parse the orchestration graph](SKILL.md#step-2--parse-the-orchestration-graph) | The control-flow DAG becomes the Job's task graph. |
 | 3 | [Parse each transformation](SKILL.md#step-3--parse-each-transformation-graph) | Linear chain → one query; branching / multi-sink → a notebook. |
 | 3b | [State the plan](SKILL.md#step-3b--state-the-migration-plan-checkpoint-for-non-trivial-projects) | Non-trivial projects only. Jobs, task types, any Lakeflow, namespace, secrets. |
 | 4 | [Map each component](SKILL.md#step-4--map-each-component) | Translate SQL to Databricks dialect. Pick each task type. Surface every literal. |
 | 5 | [Assemble the bundle](SKILL.md#step-5--assemble-the-databricks-asset-bundle) | `databricks.yml` + `resources/` jobs + `src/` SQL/notebooks. Variables, secrets, DQX gates. |
 | 5b | [Write the bundle README](SKILL.md#step-5b--write-the-bundles-readmemd) | Migration summary + before/after Mermaid DAG. |
-| 5c | [Emit a setup notebook](SKILL.md#step-5c--emit-a-setup-notebook-synthetic-source-data-manual-pre-step) | Synthetic source data (`dbldatagen`). Manual pre-step, not a Job task. |
+| 5c | [Emit a setup notebook](SKILL.md#step-5c--emit-a-setup-notebook-synthetic-source-data-manual-pre-step) | *Only if fabricating (Step 1).* Synthetic source data (`dbldatagen`). Manual pre-step, not a Job task. Skipped when real tables exist. |
 | 5d | [Verify against the checklist](SKILL.md#step-5d--verify-the-bundle-against-the-checklist-required) | Run the verification checklist + coverage script (+ `bundle validate`). Required. |
-| 6 | [Deploy & validate](SKILL.md#step-6--deploy-and-validate) | Download → validate → deploy → run the setup notebook → run the Job. |
+| 6 | [Deploy & validate](SKILL.md#step-6--deploy-and-validate) | Download → validate → deploy → (run the setup notebook, if any) → run the Job. |
 | 6a | [Run-to-green loop](SKILL.md#step-6a--the-autonomous-run-to-green-loop-cli-agent) | CLI agent: read each failed task → fix the class → redeploy → rerun, until every task passes. |
 | 6b | [Reconcile against gold](SKILL.md#step-6b--reconcile-against-expected-output-when-provided) | If the user supplies expected output + real data: compare (DQX `compare_datasets`) → localize → fix → re-reconcile until matched. |
 
 **Output:** a deployable Databricks Asset Bundle (Job(s) + SQL/notebooks), parameterized
-namespace + secret scopes, a migration README, a synthetic-data setup notebook, and — with a
-CLI — a verified green run.
+namespace + secret scopes, a migration README, a synthetic-data setup notebook *(only when the
+source data must be fabricated — skipped when real tables exist)*, and — with a CLI — a verified
+green run.
 
 ---
 
@@ -329,7 +330,7 @@ of one hard boundary: `databricks bundle` commands (`validate` / `deploy` / `run
 |---|---|---|
 | Generate the bundle | ✅ | ✅ |
 | `bundle validate` (catch structural errors early) | ✅ | ❌ — must be correct by construction |
-| Run the setup notebook (synthetic data) | ✅ | ✅ |
+| Run the setup notebook (synthetic data), if one was emitted | ✅ | ✅ |
 | Initial `bundle deploy` | ✅ | ❌ — **you** run it once from a CLI |
 | Trigger the Job + read per-task failures | ✅ | ✅ (job-scoped CLI) |
 | Iterate on **SQL/notebook** bugs → re-run | ✅ (redeploys itself) | ✅ *after* the first deploy (edits deployed source in place) |
@@ -382,7 +383,7 @@ the flow is: **upload your Matillion files, start a fresh chat, then prompt.**
    namespace you have write access to and your preferred names.
 
 4. **Run the initial deploy yourself with the CLI.** Genie *generates* the bundle and can
-   run the setup notebook, but it can't run `databricks bundle deploy` — bundle commands
+   run the setup notebook (if one was emitted), but it can't run `databricks bundle deploy` — bundle commands
    are outside its (job-scoped) CLI allow-list. So the **first** deploy is yours: pull the
    generated bundle to a machine with the [Databricks CLI](https://docs.databricks.com/en/dev-tools/cli/)
    and deploy from there:
@@ -478,11 +479,13 @@ output to the converted code already in `examples/databricks-source/databricks/`
   Databricks Job, so you can see what got consolidated), the key translations, variables,
   secrets, a synthetic-data summary, deploy commands, a post-migration checklist, and the
   source file list.
-- A **setup notebook** (`src/setup/00_generate_source_data.py`) you run **manually once**
-  before the first test run — it fabricates any missing source/input tables with
-  **synthetic data** (via `dbldatagen`) so the converted project runs without wiring real
-  sources. It's kept out of the Job graph and guarded (`IF NOT EXISTS`), so against a
-  workspace that already has the real sources it no-ops.
+- A **setup notebook** (`src/setup/00_generate_source_data.py`) — **only when the source data
+  must be fabricated** (the agent asks up front in Step 1; if the real source tables already
+  exist, no setup notebook is emitted and the bundle just reads them). When emitted, you run it
+  **manually once** before the first test run — it fabricates any missing source/input tables
+  with **synthetic data** (via `dbldatagen`) so the converted project runs without wiring real
+  sources. It's kept out of the Job graph and guarded (`IF NOT EXISTS`), so against a workspace
+  that already has the real sources it no-ops.
 - A **validation checklist** (tables exist, row counts sane, an aggregate spot-check),
   plus — when you provide **expected output** (a golden table/file, or a row-count +
   key-aggregate spec) — an **output-reconciliation** pass that diffs the migrated Job's
